@@ -1,1203 +1,434 @@
-import time
+"""
+Utilitare pentru procesarea fișierelor JSON chunkizate
+Optimizat pentru formatul EXACT specificat de utilizator
+"""
+
 import json
-import hashlib
+import os
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Dict, List, Any, Tuple, Optional
+from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger("rag_api")
+logger = logging.getLogger(__name__)
 
+def validate_json_format(file_path: str) -> Tuple[bool, str, int]:
+    """
+    Validează că fișierul JSON are formatul EXACT specificat:
+    {
+        "chunk_0": {
+            "metadata": "string",
+            "chunk": "content"
+        }
+    }
+    
+    Returns:
+        (is_valid, error_message, chunks_count)
+    """
+    try:
+        if not os.path.exists(file_path):
+            return False, "Fișierul nu există", 0
+        
+        if os.path.getsize(file_path) == 0:
+            return False, "Fișierul este gol", 0
+        
+        # Încercăm să încărcăm JSON-ul
+        with open(file_path, 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError as e:
+                return False, f"JSON invalid: {str(e)}", 0
+        
+        # Verificăm că este un dicționar
+        if not isinstance(data, dict):
+            return False, "JSON-ul trebuie să fie un obiect (dicționar), nu o listă", 0
+        
+        # Căutăm chunk-uri în formatul chunk_0, chunk_1, etc.
+        chunk_keys = [key for key in data.keys() if key.startswith('chunk_')]
+        
+        if len(chunk_keys) == 0:
+            return False, "Nu s-au găsit chunk-uri în formatul așteptat (chunk_0, chunk_1, etc.)", 0
+        
+        # Validăm primele 3 chunk-uri pentru structura EXACTĂ
+        valid_chunks = 0
+        for key in chunk_keys[:3]:
+            chunk = data[key]
+            
+            # Verificăm că chunk-ul este un dicționar
+            if not isinstance(chunk, dict):
+                continue
+            
+            # Verificăm că are EXACT cheile: "metadata" și "chunk"
+            if "metadata" not in chunk or "chunk" not in chunk:
+                continue
+            
+            # Verificăm că metadata este STRING (nu dict!)
+            if not isinstance(chunk["metadata"], str):
+                continue
+            
+            # Verificăm că chunk este STRING cu conținut
+            if not isinstance(chunk["chunk"], str) or len(chunk["chunk"].strip()) < 10:
+                continue
+            
+            valid_chunks += 1
+        
+        if valid_chunks == 0:
+            return False, "Nu s-au găsit chunk-uri valide cu structura EXACTĂ (metadata: string, chunk: string)", 0
+        
+        logger.info(f"✅ JSON valid găsit cu {len(chunk_keys)} chunk-uri, {valid_chunks} validate")
+        return True, f"Valid - {len(chunk_keys)} chunk-uri găsite", len(chunk_keys)
+        
+    except Exception as e:
+        logger.error(f"Eroare la validarea JSON: {str(e)}")
+        return False, f"Eroare la validare: {str(e)}", 0
 
 def process_json_chunks(file_path: str) -> List[Dict[str, Any]]:
     """
-    Procesează un fișier JSON care conține chunk-uri în formatul exact din streamlite.json
+    Procesează fișierul JSON cu structura EXACTĂ și extrage chunk-urile pentru stocare
     
-    Format așteptat:
-    {
-        "chunk_0": {
-            "metadata": "Source: filename.pdf",
-            "chunk": "conținutul chunk-ului..."
-        },
-        "chunk_1": {
-            "metadata": "Source: filename.pdf", 
-            "chunk": "conținutul chunk-ului..."
-        }
-    }
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        
     Returns:
-        Lista de chunk-uri procesate, fiecare cu conținut și metadate
-        
-    Raises:
-        ValueError: Dacă fișierul nu are formatul corect
-        FileNotFoundError: Dacă fișierul nu există
+        Lista de dicționare cu chunk-uri procesate
     """
-    start_time = time.time()
-    chunks_data = []
-    
     try:
-        # Verificăm dacă fișierul există
-        if not Path(file_path).exists():
-            raise FileNotFoundError(f"Fișierul nu a fost găsit: {file_path}")
+        # Validăm mai întâi formatul
+        is_valid, error_msg, chunks_count = validate_json_format(file_path)
+        if not is_valid:
+            raise ValueError(f"Fișier JSON invalid: {error_msg}")
         
-        # Verificăm dimensiunea fișierului
-        file_size = Path(file_path).stat().st_size
-        max_size = 50 * 1024 * 1024  # 50MB limit
+        # Încărcăm datele
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        if file_size > max_size:
-            raise ValueError(f"Fișierul este prea mare: {file_size / (1024*1024):.1f}MB > {max_size / (1024*1024)}MB")
+        # Extragem chunk-urile
+        chunks_data = []
+        chunk_keys = sorted([key for key in data.keys() if key.startswith('chunk_')])
         
-        # Încărcăm JSON-ul cu gestionare optimizată a memoriei
-        with open(file_path, "r", encoding="utf-8") as f:
-            try:
-                json_data = json.load(f)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Fișierul JSON nu este valid: {str(e)}")
-        
-        logger.info(f"JSON încărcat cu succes ({file_size / 1024:.1f}KB), verificare format...", 
-                   extra={"file": file_path, "size_kb": file_size / 1024})
-        
-        # Verificăm că JSON-ul este un dicționar
-        if not isinstance(json_data, dict):
-            raise ValueError("JSON-ul trebuie să fie un obiect (dicționar), nu o listă sau alt tip")
-        
-        # Găsim toate chunk-urile și le sortăm
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        if not chunk_keys:
-            raise ValueError("Nu s-au găsit chunk-uri. Cheile trebuie să înceapă cu 'chunk_'")
-        
-        # Sortăm cheile pentru a procesa chunk-urile în ordine
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999  # Punem la sfârșit chunk-urile cu nume invalid
-        
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-        
-        # Procesăm chunk-urile
-        chunk_count = 0
-        valid_chunks = 0
-        
-        for key in sorted_keys:
-            value = json_data[key]
-            chunk_count += 1
+        for i, key in enumerate(chunk_keys):
+            chunk = data[key]
             
-            # Validăm structura chunk-ului
-            if not isinstance(value, dict):
-                logger.warning(f"Chunk {key} nu este un dicționar și va fi ignorat", 
-                             extra={"chunk_type": type(value).__name__})
+            # Verificăm structura EXACTĂ
+            if not isinstance(chunk, dict) or "metadata" not in chunk or "chunk" not in chunk:
+                logger.warning(f"Chunk invalid sărit: {key}")
                 continue
             
-            if "metadata" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'metadata' și va fi ignorat")
+            content = chunk["chunk"]
+            metadata_string = chunk["metadata"]
+            
+            # Verificăm că sunt string-uri valide
+            if not isinstance(content, str) or not isinstance(metadata_string, str):
+                logger.warning(f"Chunk cu tipuri invalide sărit: {key}")
                 continue
             
-            if "chunk" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'chunk' și va fi ignorat")
+            # Verificăm că avem conținut suficient
+            if len(content.strip()) < 10:
+                logger.warning(f"Chunk cu conținut insuficient sărit: {key}")
                 continue
             
-            # Validăm conținutul chunk-ului
-            chunk_content = str(value["chunk"]).strip()
+            # Curățăm conținutul
+            content = content.strip()
             
-            if len(chunk_content) < 10:
-                logger.warning(f"Chunk {key} este prea scurt ({len(chunk_content)} caractere) și va fi ignorat")
-                continue
-            
-            # Procesăm metadatele
-            metadata = {
-                "chunk_id": key,
-                "original_source": str(value["metadata"]),
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "chunk_index": valid_chunks,
-                "file_type": "json_chunked",
-                "content_length": len(chunk_content),
-                "file_path": str(file_path)
+            # Convertim metadata string în dict pentru ChromaDB
+            enhanced_metadata = {
+                'chunk_id': key,
+                'chunk_index': i,
+                'content_length': len(content),
+                'word_count': len(content.split()),
+                'processed_at': datetime.now().isoformat(),
+                'file_source': os.path.basename(file_path),
+                'original_source': metadata_string,  # Păstrăm metadata originală
+                'source': metadata_string  # Pentru compatibilitate
             }
             
-            # Adăugăm chunk-ul în lista de procesare
             chunks_data.append({
-                "content": chunk_content,
-                "metadata": metadata,
-                "chunk_id": key
+                'content': content,
+                'metadata': enhanced_metadata
             })
-            
-            valid_chunks += 1
-            
-            logger.debug(f"Procesat chunk {key}: {len(chunk_content)} caractere", 
-                       extra={"chunk_id": key, "content_length": len(chunk_content)})
         
-        # Verificăm că avem chunk-uri valide
-        if len(chunks_data) == 0:
-            raise ValueError(
-                f"Fișierul JSON nu conține chunk-uri valide în formatul așteptat. "
-                f"Găsite {chunk_count} chunk-uri potențiale, dar niciun chunk valid. "
-                f"Formatul așteptat: {{'chunk_0': {{'metadata': '...', 'chunk': '...'}}, ...}}"
-            )
+        if not chunks_data:
+            raise ValueError("Nu s-au putut extrage chunk-uri valide din fișier")
         
-        processing_time = time.time() - start_time
-        
-        logger.info(
-            f"Fișier JSON procesat cu succes: {len(chunks_data)} chunk-uri valide din {chunk_count} chunk-uri totale în {processing_time:.2f} secunde",
-            extra={
-                "file": file_path, 
-                "valid_chunks": len(chunks_data), 
-                "total_chunks": chunk_count,
-                "duration": f"{processing_time:.2f}s",
-                "avg_chunk_size": sum(len(c["content"]) for c in chunks_data) / len(chunks_data)
-            }
-        )
-        
+        logger.info(f"✅ Procesat cu succes: {len(chunks_data)} chunk-uri din {file_path}")
         return chunks_data
         
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Eroare la procesarea fișierului JSON: {str(e)}", extra={"file": file_path})
-        raise
     except Exception as e:
-        logger.error(f"Eroare neașteptată la procesarea fișierului JSON: {str(e)}", 
-                    extra={"file": file_path, "error_type": type(e).__name__})
-        raise ValueError(f"Eroare neașteptată la procesarea fișierului: {str(e)}")-ul este un dicționar
-        if not isinstance(json_data, dict):
-            raise ValueError("JSON-ul trebuie să fie un obiect (dicționar), nu o listă sau alt tip")
-        
-        # Găsim toate chunk-urile și le sortăm
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        if not chunk_keys:
-            raise ValueError("Nu s-au găsit chunk-uri. Cheile trebuie să înceapă cu 'chunk_'")
-        
-        # Sortăm cheile pentru a procesa chunk-urile în ordine
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999  # Punem la sfârșit chunk-urile cu nume invalid
-        
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-        
-        # Procesăm chunk-urile
-        chunk_count = 0
-        valid_chunks = 0
-        
-        for key in sorted_keys:
-            value = json_data[key]
-            chunk_count += 1
-            
-            # Validăm structura chunk-ului
-            if not isinstance(value, dict):
-                logger.warning(f"Chunk {key} nu este un dicționar și va fi ignorat", 
-                             extra={"chunk_type": type(value).__name__})
-                continue
-            
-            if "metadata" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'metadata' și va fi ignorat")
-                continue
-            
-            if "chunk" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'chunk' și va fi ignorat")
-                continue
-            
-            # Validăm conținutul chunk-ului
-            chunk_content = str(value["chunk"]).strip()
-            
-            if len(chunk_content) < 10:
-                logger.warning(f"Chunk {key} este prea scurt ({len(chunk_content)} caractere) și va fi ignorat")
-                continue
-            
-            # Procesăm metadatele
-            metadata = {
-                "chunk_id": key,
-                "original_source": str(value["metadata"]),
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "chunk_index": valid_chunks,
-                "file_type": "json_chunked",
-                "content_length": len(chunk_content),
-                "file_path": str(file_path)
-            }
-            
-            # Adăugăm chunk-ul în lista de procesare
-            chunks_data.append({
-                "content": chunk_content,
-                "metadata": metadata,
-                "chunk_id": key
-            })
-            
-            valid_chunks += 1
-            
-            logger.debug(f"Procesat chunk {key}: {len(chunk_content)} caractere", 
-                       extra={"chunk_id": key, "content_length": len(chunk_content)})
-        
-        # Verificăm că avem chunk-uri valide
-        if len(chunks_data) == 0:
-            raise ValueError(
-                f"Fișierul JSON nu conține chunk-uri valide în formatul așteptat. "
-                f"Găsite {chunk_count} chunk-uri potențiale, dar niciun chunk valid. "
-                f"Formatul așteptat: {{'chunk_0': {{'metadata': '...', 'chunk': '...'}}, ...}}"
-            )
-        
-        processing_time = time.time() - start_time
-        
-        logger.info(
-            f"Fișier JSON procesat cu succes: {len(chunks_data)} chunk-uri valide din {chunk_count} chunk-uri totale în {processing_time:.2f} secunde",
-            extra={
-                "file": file_path, 
-                "valid_chunks": len(chunks_data), 
-                "total_chunks": chunk_count,
-                "duration": f"{processing_time:.2f}s",
-                "avg_chunk_size": sum(len(c["content"]) for c in chunks_data) / len(chunks_data)
-            }
-        )
-        
-        return chunks_data
-        
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Eroare la procesarea fișierului JSON: {str(e)}", extra={"file": file_path})
-        raise
-    except Exception as e:
-        logger.error(f"Eroare neașteptată la procesarea fișierului JSON: {str(e)}", 
-                    extra={"file": file_path, "error_type": type(e).__name__})
+        logger.error(f"Eroare la procesarea fișierului {file_path}: {str(e)}")
         raise ValueError(f"Eroare neașteptată la procesarea fișierului: {str(e)}")
-
-
-def validate_json_format(file_path: str) -> Tuple[bool, str, int]:
-    """
-    Validează dacă un fișier JSON are formatul corect pentru chunk-uri.
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        
-    Returns:
-        Tuple (is_valid, error_message, chunks_count)
-    """
-    try:
-        # Verificăm dacă fișierul există
-        if not Path(file_path).exists():
-            return False, "Fișierul nu a fost găsit", 0
-        
-        # Verificăm dimensiunea fișierului
-        file_size = Path(file_path).stat().st_size
-        if file_size == 0:
-            return False, "Fișierul este gol", 0
-        
-        max_size = 50 * 1024 * 1024  # 50MB
-        if file_size > max_size:
-            return False, f"Fișierul este prea mare: {file_size / (1024*1024):.1f}MB", 0
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            try:
-                json_data = json.load(f)
-            except json.JSONDecodeError as e:
-                return False, f"Fișierul JSON nu este valid: {str(e)}", 0
-        
-        if not isinstance(json_data, dict):
-            return False, "JSON-ul trebuie să fie un obiect (dicționar), nu o listă sau alt tip", 0
-        
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        if len(chunk_keys) == 0:
-            return False, "Nu s-au găsit chunk-uri. Cheile trebuie să înceapă cu 'chunk_'", 0
-        
-        valid_chunks = 0
-        for key in chunk_keys:
-            value = json_data[key]
-            
-            if not isinstance(value, dict):
-                return False, f"Chunk-ul '{key}' trebuie să fie un obiect (dicționar)", valid_chunks
-            
-            if "metadata" not in value:
-                return False, f"Chunk-ul '{key}' nu conține câmpul 'metadata'", valid_chunks
-            
-            if "chunk" not in value:
-                return False, f"Chunk-ul '{key}' nu conține câmpul 'chunk'", valid_chunks
-            
-            if not isinstance(value["chunk"], str) or len(value["chunk"].strip()) < 10:
-                return False, f"Chunk-ul '{key}' nu conține text valid (minim 10 caractere)", valid_chunks
-            
-            valid_chunks += 1
-        
-        return True, "", valid_chunks
-        
-    except Exception as e:
-        return False, f"Eroare la validarea fișierului: {str(e)}", 0
-
 
 def get_json_statistics(file_path: str) -> Dict[str, Any]:
     """
-    Obține statistici despre un fișier JSON chunkizat.
+    Obține statistici despre fișierul JSON chunkizat cu structura EXACTĂ
     
-    Args:
-        file_path: Calea către fișierul JSON
-        
     Returns:
         Dicționar cu statistici despre fișier
     """
     try:
-        if not Path(file_path).exists():
-            return {"error": "Fișierul nu a fost găsit", "total_chunks": 0, "valid_chunks": 0}
+        if not os.path.exists(file_path):
+            return {"error": "Fișierul nu există"}
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
+        file_size = os.path.getsize(file_path)
         
-        if not isinstance(json_data, dict):
-            return {"error": "JSON-ul nu este un dicționar", "total_chunks": 0, "valid_chunks": 0}
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
+        if not isinstance(data, dict):
+            return {"error": "JSON-ul nu este un dicționar"}
         
-        # Sortăm chunk-urile
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999
+        # Analiza chunk-urilor cu structura EXACTĂ
+        chunk_keys = [key for key in data.keys() if key.startswith('chunk_')]
         
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
+        if not chunk_keys:
+            return {"error": "Nu s-au găsit chunk-uri"}
         
-        statistics = {
-            "total_chunks": len(chunk_keys),
-            "valid_chunks": 0,
-            "total_characters": 0,
-            "avg_chunk_length": 0,
-            "min_chunk_length": float('inf'),
-            "max_chunk_length": 0,
-            "sources": set(),
-            "chunk_ids": [],
-            "file_size_bytes": Path(file_path).stat().st_size,
-            "file_size_kb": Path(file_path).stat().st_size / 1024
+        # Statistici detaliate
+        total_content_length = 0
+        total_words = 0
+        valid_chunks = 0
+        metadata_sources = set()
+        
+        for key in chunk_keys:
+            chunk = data[key]
+            if (isinstance(chunk, dict) and 
+                "metadata" in chunk and 
+                "chunk" in chunk and 
+                isinstance(chunk["metadata"], str) and 
+                isinstance(chunk["chunk"], str)):
+                
+                content = chunk["chunk"]
+                metadata_string = chunk["metadata"]
+                
+                if len(content.strip()) >= 10:
+                    valid_chunks += 1
+                    total_content_length += len(content)
+                    total_words += len(content.split())
+                    metadata_sources.add(metadata_string)
+        
+        stats = {
+            'file_name': os.path.basename(file_path),
+            'file_size_bytes': file_size,
+            'file_size_mb': round(file_size / (1024 * 1024), 2),
+            'total_chunks': len(chunk_keys),
+            'valid_chunks': valid_chunks,
+            'invalid_chunks': len(chunk_keys) - valid_chunks,
+            'total_content_length': total_content_length,
+            'total_words': total_words,
+            'average_chunk_length': round(total_content_length / valid_chunks) if valid_chunks > 0 else 0,
+            'average_words_per_chunk': round(total_words / valid_chunks) if valid_chunks > 0 else 0,
+            'unique_metadata_sources': len(metadata_sources),
+            'metadata_sources_list': list(metadata_sources),
+            'processed_at': datetime.now().isoformat()
         }
         
-        for key in sorted_keys:
-            value = json_data[key]
-            
-            if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-                chunk_content = str(value["chunk"]).strip()
-                chunk_length = len(chunk_content)
-                
-                if chunk_length >= 10:  # Considerăm doar chunk-urile valide
-                    statistics["valid_chunks"] += 1
-                    statistics["total_characters"] += chunk_length
-                    statistics["min_chunk_length"] = min(statistics["min_chunk_length"], chunk_length)
-                    statistics["max_chunk_length"] = max(statistics["max_chunk_length"], chunk_length)
-                    statistics["sources"].add(str(value["metadata"]))
-                    statistics["chunk_ids"].append(key)
-        
-        if statistics["valid_chunks"] > 0:
-            statistics["avg_chunk_length"] = statistics["total_characters"] / statistics["valid_chunks"]
-        else:
-            statistics["min_chunk_length"] = 0
-            
-        # Convertim set-ul în listă pentru JSON serialization
-        statistics["sources"] = list(statistics["sources"])
-        
-        return statistics
+        logger.debug(f"📊 Statistici generate pentru {file_path}: {valid_chunks} chunk-uri valide")
+        return stats
         
     except Exception as e:
-        logger.error(f"Eroare la calcularea statisticilor pentru {file_path}: {str(e)}")
-        return {
-            "error": str(e),
-            "total_chunks": 0,
-            "valid_chunks": 0,
-            "file_size_bytes": 0,
-            "file_size_kb": 0
-        }
-
+        logger.error(f"Eroare la generarea statisticilor pentru {file_path}: {str(e)}")
+        return {"error": f"Eroare la analiza fișierului: {str(e)}"}
 
 def preview_json_chunks(file_path: str, max_chunks: int = 3) -> Dict[str, Any]:
     """
-    Oferă o previzualizare a primelor chunk-uri dintr-un fișier JSON.
+    Oferă o previzualizare a chunk-urilor din fișier cu structura EXACTĂ
     
     Args:
         file_path: Calea către fișierul JSON
         max_chunks: Numărul maxim de chunk-uri de previzualizat
         
     Returns:
-        Dicționar cu informații despre preview
+        Dicționar cu previzualizarea chunk-urilor
     """
     try:
-        if not Path(file_path).exists():
-            return {"error": "Fișierul nu a fost găsit", "total_chunks": 0, "previewed_chunks": 0, "chunks": []}
+        if not os.path.exists(file_path):
+            return {"error": "Fișierul nu există"}
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        if not isinstance(json_data, dict):
-            return {"error": "JSON-ul nu este un dicționar", "total_chunks": 0, "previewed_chunks": 0, "chunks": []}
+        if not isinstance(data, dict):
+            return {"error": "JSON-ul nu este un dicționar"}
         
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
+        chunk_keys = sorted([key for key in data.keys() if key.startswith('chunk_')])
         
-        # Sortăm chunk-urile
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999
+        if not chunk_keys:
+            return {"error": "Nu s-au găsit chunk-uri"}
         
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
+        # Selectăm primele chunk-uri pentru previzualizare
+        preview_chunks = []
         
-        preview_data = {
-            "total_chunks": len(chunk_keys),
-            "previewed_chunks": min(max_chunks, len(chunk_keys)),
-            "chunks": [],
-            "file_info": {
-                "size_kb": Path(file_path).stat().st_size / 1024,
-                "name": Path(file_path).name
-            }
-        }
-        
-        for i, key in enumerate(sorted_keys[:max_chunks]):
-            value = json_data[key]
+        for key in chunk_keys[:max_chunks]:
+            chunk = data[key]
             
-            if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-                chunk_content = str(value["chunk"]).strip()
-                preview_length = 200
+            if (isinstance(chunk, dict) and 
+                "metadata" in chunk and 
+                "chunk" in chunk and 
+                isinstance(chunk["metadata"], str) and 
+                isinstance(chunk["chunk"], str)):
                 
-                preview_data["chunks"].append({
-                    "chunk_id": key,
-                    "metadata": str(value["metadata"]),
-                    "content_preview": (chunk_content[:preview_length] + "..." 
-                                      if len(chunk_content) > preview_length 
-                                      else chunk_content),
-                    "content_length": len(chunk_content),
-                    "is_valid": len(chunk_content) >= 10
+                content = chunk["chunk"]
+                metadata_string = chunk["metadata"]
+                
+                # Truncăm conținutul pentru previzualizare
+                preview_content = content[:200] + "..." if len(content) > 200 else content
+                
+                preview_chunks.append({
+                    'chunk_id': key,
+                    'content_preview': preview_content,
+                    'content_length': len(content),
+                    'word_count': len(content.split()),
+                    'metadata': metadata_string
                 })
         
-        return preview_data
-        
-    except Exception as e:
-        logger.error(f"Eroare la previzualizarea fișierului JSON: {str(e)}")
-        return {
-            "error": str(e),
-            "total_chunks": 0,
-            "previewed_chunks": 0,
-            "chunks": []
+        result = {
+            'file_name': os.path.basename(file_path),
+            'total_chunks': len(chunk_keys),
+            'preview_chunks': preview_chunks,
+            'showing': f"{min(len(preview_chunks), max_chunks)} din {len(chunk_keys)} chunk-uri"
         }
+        
+        logger.debug(f"👁️ Previzualizare generată pentru {file_path}: {len(preview_chunks)} chunk-uri")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Eroare la previzualizarea fișierului {file_path}: {str(e)}")
+        return {"error": f"Eroare la previzualizare: {str(e)}"}
 
-
-def generate_file_hash(file_path: str) -> str:
+def validate_chunk_structure(chunk_data: Dict[str, Any]) -> Tuple[bool, str]:
     """
-    Generează un hash pentru un fișier pentru detectarea duplicatelor.
+    Validează structura EXACTĂ a unui chunk individual
     
     Args:
-        file_path: Calea către fișier
+        chunk_data: Datele chunk-ului de validat
         
     Returns:
-        Hash-ul MD5 al fișierului
+        (is_valid, error_message)
     """
     try:
-        hash_md5 = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+        if not isinstance(chunk_data, dict):
+            return False, "Chunk-ul trebuie să fie un dicționar"
+        
+        # Verificăm cheile EXACTE
+        required_keys = ["metadata", "chunk"]
+        for key in required_keys:
+            if key not in chunk_data:
+                return False, f"Lipsește cheia obligatorie: {key}"
+        
+        # Verificăm că nu are chei în plus
+        if set(chunk_data.keys()) != set(required_keys):
+            return False, f"Chunk-ul trebuie să aibă EXACT cheile: {required_keys}"
+        
+        # Validăm metadata - TREBUIE să fie string
+        metadata = chunk_data["metadata"]
+        if not isinstance(metadata, str):
+            return False, "Metadata trebuie să fie string, nu dict sau alt tip"
+        
+        if len(metadata.strip()) == 0:
+            return False, "Metadata nu poate fi string gol"
+        
+        # Validăm conținutul - TREBUIE să fie string
+        content = chunk_data["chunk"]
+        if not isinstance(content, str):
+            return False, "Conținutul chunk-ului trebuie să fie string"
+        
+        if len(content.strip()) < 10:
+            return False, "Conținutul chunk-ului este prea scurt (minimum 10 caractere)"
+        
+        return True, "Chunk valid cu structura exactă"
+        
     except Exception as e:
-        logger.error(f"Eroare la generarea hash-ului pentru {file_path}: {str(e)}")
+        return False, f"Eroare la validarea chunk-ului: {str(e)}"
+
+def clean_chunk_content(content: str) -> str:
+    """
+    Curăță și normalizează conținutul unui chunk
+    
+    Args:
+        content: Conținutul de curățat
+        
+    Returns:
+        Conținutul curățat
+    """
+    if not isinstance(content, str):
         return ""
-
-
-def optimize_json_structure(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Optimizează structura unui JSON pentru procesare mai eficientă.
     
-    Args:
-        json_data: Datele JSON de optimizat
-        
-    Returns:
-        JSON optimizat
-    """
-    if not isinstance(json_data, dict):
-        return json_data
-    
-    optimized = {}
-    chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-    
-    # Sortăm și re-indexăm chunk-urile
-    def extract_chunk_number(key: str) -> int:
-        try:
-            return int(key.split("_")[1])
-        except (IndexError, ValueError):
-            return 999999
-    
-    sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-    
-    for i, key in enumerate(sorted_keys):
-        value = json_data[key]
-        
-        if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-            # Optimizăm conținutul chunk-ului
-            chunk_content = str(value["chunk"]).strip()
-            
-            if len(chunk_content) >= 10:  # Doar chunk-urile valide
-                optimized[f"chunk_{i}"] = {
-                    "metadata": str(value["metadata"]).strip(),
-                    "chunk": chunk_content
-                }
-    
-    return optimized
-
-
-def batch_process_json_files(file_paths: List[str]) -> List[Tuple[str, List[Dict[str, Any]], Optional[str]]]:
-    """
-    Procesează mai multe fișiere JSON în batch pentru eficiență.
-    
-    Args:
-        file_paths: Lista căilor către fișierele JSON
-        
-    Returns:
-        Lista de tuple (file_path, chunks_data, error_message)
-    """
-    results = []
-    
-    for file_path in file_paths:
-        try:
-            chunks_data = process_json_chunks(file_path)
-            results.append((file_path, chunks_data, None))
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Eroare la procesarea {file_path}: {error_msg}")
-            results.append((file_path, [], error_msg))
-    
-    return results
-
-
-def detect_json_encoding(file_path: str) -> str:
-    """
-    Detectează encoding-ul unui fișier JSON.
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        
-    Returns:
-        Encoding-ul detectat
-    """
-    import chardet
-    
-    try:
-        with open(file_path, 'rb') as f:
-            raw_data = f.read(min(32768, Path(file_path).stat().st_size))  # Citim maxim 32KB
-            result = chardet.detect(raw_data)
-            return result.get('encoding', 'utf-8') or 'utf-8'
-    except Exception as e:
-        logger.warning(f"Nu s-a putut detecta encoding-ul pentru {file_path}: {str(e)}")
-        return 'utf-8'
-
-
-def compress_json_content(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Comprimă conținutul JSON prin eliminarea spațiilor și optimizări.
-    
-    Args:
-        json_data: Datele JSON de comprimat
-        
-    Returns:
-        JSON comprimat
-    """
-    if not isinstance(json_data, dict):
-        return json_data
-    
-    compressed = {}
-    
-    for key, value in json_data.items():
-        if key.startswith("chunk_") and isinstance(value, dict):
-            if "metadata" in value and "chunk" in value:
-                # Comprimăm conținutul
-                chunk_content = str(value["chunk"]).strip()
-                # Eliminăm spațiile multiple
-                chunk_content = ' '.join(chunk_content.split())
-                
-                compressed[key] = {
-                    "metadata": str(value["metadata"]).strip(),
-                    "chunk": chunk_content
-                }
-    
-    return compressed
-
-
-def create_json_backup(file_path: str, backup_dir: Optional[str] = None) -> str:
-    """
-    Creează o copie de backup pentru un fișier JSON.
-    
-    Args:
-        file_path: Calea către fișierul original
-        backup_dir: Directorul pentru backup (opțional)
-        
-    Returns:
-        Calea către fișierul de backup
-    """
-    try:
-        original_path = Path(file_path)
-        
-        if backup_dir:
-            backup_directory = Path(backup_dir)
-        else:
-            backup_directory = original_path.parent / "backups"
-        
-        # Creăm directorul de backup dacă nu există
-        backup_directory.mkdir(exist_ok=True)
-        
-        # Generăm numele fișierului de backup cu timestamp
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        backup_name = f"{original_path.stem}_backup_{timestamp}{original_path.suffix}"
-        backup_path = backup_directory / backup_name
-        
-        # Copiem fișierul
-        import shutil
-        shutil.copy2(file_path, backup_path)
-        
-        logger.info(f"Backup creat: {backup_path}")
-        return str(backup_path)
-        
-    except Exception as e:
-        logger.error(f"Eroare la crearea backup-ului pentru {file_path}: {str(e)}")
-        raise
-
-
-def validate_chunk_content_quality(content: str) -> Dict[str, Any]:
-    """
-    Validează calitatea conținutului unui chunk.
-    
-    Args:
-        content: Conținutul chunk-ului
-        
-    Returns:
-        Dicționar cu rezultatele validării
-    """
-    result = {
-        "is_valid": True,
-        "quality_score": 0.0,
-        "issues": [],
-        "suggestions": []
-    }
-    
+    # Eliminăm spațiile în plus
     content = content.strip()
     
-    # Verificări de bază
-    if len(content) < 10:
-        result["is_valid"] = False
-        result["issues"].append("Conținut prea scurt")
-        return result
+    # Înlocuim multiple spații cu unul singur
+    import re
+    content = re.sub(r'\s+', ' ', content)
     
-    # Calculăm scorul de calitate
-    quality_factors = []
+    # Eliminăm caracterele de control
+    content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\t')
     
-    # Factor 1: Lungimea conținutului
-    if 50 <= len(content) <= 2000:
-        quality_factors.append(1.0)
-    elif 10 <= len(content) < 50:
-        quality_factors.append(0.6)
-    elif len(content) > 2000:
-        quality_factors.append(0.8)
-    else:
-        quality_factors.append(0.2)
-    
-    # Factor 2: Diversitatea caracterelor
-    unique_chars = len(set(content.lower()))
-    char_diversity = min(unique_chars / 50, 1.0)  # Normalizăm la maxim 50 caractere unice
-    quality_factors.append(char_diversity)
-    
-    # Factor 3: Prezența propozițiilor complete
-    sentences = content.count('.') + content.count('!') + content.count('?')
-    if sentences > 0:
-        quality_factors.append(1.0)
-    else:
-        quality_factors.append(0.5)
-        result["suggestions"].append("Conținutul ar trebui să conțină propoziții complete")
-    
-    # Factor 4: Raportul spații/text
-    spaces = content.count(' ')
-    words = len(content.split())
-    if words > 1:
-        space_ratio = spaces / len(content)
-        if 0.1 <= space_ratio <= 0.2:
-            quality_factors.append(1.0)
-        else:
-            quality_factors.append(0.7)
-    else:
-        quality_factors.append(0.3)
-        result["suggestions"].append("Conținutul ar trebui să conțină mai multe cuvinte")
-    
-    # Calculăm scorul final
-    result["quality_score"] = sum(quality_factors) / len(quality_factors)
-    
-    # Stabilim pragul pentru validitate
-    if result["quality_score"] < 0.5:
-        result["is_valid"] = False
-        result["issues"].append(f"Scor de calitate scăzut: {result['quality_score']:.2f}")
-    
-    return result
+    return content
 
-
-def merge_json_chunks_files(file_paths: List[str], output_path: str) -> Dict[str, Any]:
+def extract_metadata_info(metadata_string: str) -> Dict[str, Any]:
     """
-    Combină mai multe fișiere JSON cu chunk-uri într-un singur fișier.
+    Extrage informații din metadata string și le convertește în dict
     
     Args:
-        file_paths: Lista căilor către fișierele JSON
-        output_path: Calea către fișierul de output
+        metadata_string: Metadata originală ca string
         
     Returns:
-        Statistici despre procesul de combinare
+        Metadata convertită în dict
     """
-    merged_data = {}
-    chunk_index = 0
-    stats = {
-        "total_files": len(file_paths),
-        "processed_files": 0,
-        "total_chunks": 0,
-        "valid_chunks": 0,
-        "errors": []
+    if not isinstance(metadata_string, str):
+        return {"original_source": "Necunoscut"}
+    
+    # Încercăm să parsăm informații din string
+    metadata_dict = {
+        "original_source": metadata_string,
+        "source": metadata_string
     }
     
-    for file_path in file_paths:
+    # Dacă stringul conține "Source: filename", extragem filename-ul
+    if "Source:" in metadata_string:
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
-            
-            if not isinstance(json_data, dict):
-                stats["errors"].append(f"{file_path}: Nu este un dicționar JSON valid")
-                continue
-            
-            chunk_keys = sorted([k for k in json_data.keys() if k.startswith("chunk_")],
-                              key=lambda x: int(x.split("_")[1]) if x.split("_")[1].isdigit() else 999999)
-            
-            for key in chunk_keys:
-                value = json_data[key]
-                if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-                    # Adăugăm informații despre fișierul sursă în metadata
-                    enhanced_metadata = str(value["metadata"])
-                    if not enhanced_metadata.endswith(f" (din {Path(file_path).name})"):
-                        enhanced_metadata += f" (din {Path(file_path).name})"
-                    
-                    merged_data[f"chunk_{chunk_index}"] = {
-                        "metadata": enhanced_metadata,
-                        "chunk": value["chunk"]
-                    }
-                    
-                    chunk_index += 1
-                    stats["valid_chunks"] += 1
-                
-                stats["total_chunks"] += 1
-            
-            stats["processed_files"] += 1
-            
-        except Exception as e:
-            error_msg = f"{file_path}: {str(e)}"
-            stats["errors"].append(error_msg)
-            logger.error(f"Eroare la procesarea {file_path} pentru combinare: {str(e)}")
+            source_part = metadata_string.split("Source:")[1].strip()
+            metadata_dict["document_name"] = source_part
+            metadata_dict["source"] = source_part
+        except:
+            pass
     
-    # Salvăm fișierul combinat
+    return metadata_dict
+
+# Funcții helper pentru debugging și testing
+def test_json_file(file_path: str) -> None:
+    """
+    Testează complet un fișier JSON cu structura EXACTĂ și afișează rezultatele
+    """
+    print(f"\n🔍 Testare fișier: {file_path}")
+    print("=" * 50)
+    
+    # Test validare
+    is_valid, error_msg, chunks_count = validate_json_format(file_path)
+    print(f"✅ Validare: {'VALID' if is_valid else 'INVALID'}")
+    if not is_valid:
+        print(f"❌ Eroare: {error_msg}")
+        return
+    
+    # Test statistici
+    stats = get_json_statistics(file_path)
+    if 'error' not in stats:
+        print(f"📊 Statistici:")
+        print(f"   - Total chunk-uri: {stats['total_chunks']}")
+        print(f"   - Chunk-uri valide: {stats['valid_chunks']}")
+        print(f"   - Dimensiune fișier: {stats['file_size_mb']} MB")
+        print(f"   - Total cuvinte: {stats['total_words']}")
+        print(f"   - Surse metadata unice: {stats['unique_metadata_sources']}")
+    
+    # Test previzualizare
+    preview = preview_json_chunks(file_path, 2)
+    if 'error' not in preview:
+        print(f"👁️ Previzualizare (primele 2 chunk-uri):")
+        for chunk in preview['preview_chunks']:
+            print(f"   - {chunk['chunk_id']}: {chunk['content_length']} caractere")
+            print(f"     Metadata: {chunk['metadata']}")
+    
+    # Test procesare
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(merged_data, f, ensure_ascii=False, indent=2)
-        
-        stats["output_file"] = output_path
-        stats["success"] = True
-        
-        logger.info(f"Fișiere JSON combinate cu succes în {output_path}")
-        
+        chunks_data = process_json_chunks(file_path)
+        print(f"✅ Procesare: {len(chunks_data)} chunk-uri procesate cu succes")
     except Exception as e:
-        stats["success"] = False
-        stats["errors"].append(f"Eroare la salvarea fișierului combinat: {str(e)}")
-        logger.error(f"Eroare la salvarea fișierului combinat {output_path}: {str(e)}")
+        print(f"❌ Eroare la procesare: {str(e)}")
     
-    return stats-ul este un dicționar
-        if not isinstance(json_data, dict):
-            raise ValueError("JSON-ul trebuie să fie un obiect (dicționar), nu o listă sau alt tip")
-        
-        # Găsim toate chunk-urile și le sortăm
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        if not chunk_keys:
-            raise ValueError("Nu s-au găsit chunk-uri. Cheile trebuie să înceapă cu 'chunk_'")
-        
-        # Sortăm cheile pentru a procesa chunk-urile în ordine
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999  # Punem la sfârșit chunk-urile cu nume invalid
-        
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-        
-        # Procesăm chunk-urile
-        chunk_count = 0
-        valid_chunks = 0
-        
-        for key in sorted_keys:
-            value = json_data[key]
-            chunk_count += 1
-            
-            # Validăm structura chunk-ului
-            if not isinstance(value, dict):
-                logger.warning(f"Chunk {key} nu este un dicționar și va fi ignorat", 
-                             extra={"chunk_type": type(value).__name__})
-                continue
-            
-            if "metadata" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'metadata' și va fi ignorat")
-                continue
-            
-            if "chunk" not in value:
-                logger.warning(f"Chunk {key} nu conține câmpul 'chunk' și va fi ignorat")
-                continue
-            
-            # Validăm conținutul chunk-ului
-            chunk_content = str(value["chunk"]).strip()
-            
-            if len(chunk_content) < 10:
-                logger.warning(f"Chunk {key} este prea scurt ({len(chunk_content)} caractere) și va fi ignorat")
-                continue
-            
-            # Procesăm metadatele
-            metadata = {
-                "chunk_id": key,
-                "original_source": str(value["metadata"]),
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "chunk_index": valid_chunks,
-                "file_type": "json_chunked",
-                "content_length": len(chunk_content),
-                "file_path": str(file_path)
-            }
-            
-            # Adăugăm chunk-ul în lista de procesare
-            chunks_data.append({
-                "content": chunk_content,
-                "metadata": metadata,
-                "chunk_id": key
-            })
-            
-            valid_chunks += 1
-            
-            logger.debug(f"Procesat chunk {key}: {len(chunk_content)} caractere", 
-                       extra={"chunk_id": key, "content_length": len(chunk_content)})
-        
-        # Verificăm că avem chunk-uri valide
-        if len(chunks_data) == 0:
-            raise ValueError(
-                f"Fișierul JSON nu conține chunk-uri valide în formatul așteptat. "
-                f"Găsite {chunk_count} chunk-uri potențiale, dar niciun chunk valid. "
-                f"Formatul așteptat: {{'chunk_0': {{'metadata': '...', 'chunk': '...'}}, ...}}"
-            )
-        
-        processing_time = time.time() - start_time
-        
-        logger.info(
-            f"Fișier JSON procesat cu succes: {len(chunks_data)} chunk-uri valide din {chunk_count} chunk-uri totale în {processing_time:.2f} secunde",
-            extra={
-                "file": file_path, 
-                "valid_chunks": len(chunks_data), 
-                "total_chunks": chunk_count,
-                "duration": f"{processing_time:.2f}s",
-                "avg_chunk_size": sum(len(c["content"]) for c in chunks_data) / len(chunks_data)
-            }
-        )
-        
-        return chunks_data
-        
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Eroare la procesarea fișierului JSON: {str(e)}", extra={"file": file_path})
-        raise
-    except Exception as e:
-        logger.error(f"Eroare neașteptată la procesarea fișierului JSON: {str(e)}", 
-                    extra={"file": file_path, "error_type": type(e).__name__})
-        raise ValueError(f"Eroare neașteptată la procesarea fișierului: {str(e)}")
-
-
-def validate_json_format(file_path: str) -> Tuple[bool, str, int]:
-    """
-    Validează dacă un fișier JSON are formatul corect pentru chunk-uri.
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        
-    Returns:
-        Tuple (is_valid, error_message, chunks_count)
-    """
-    try:
-        # Verificăm dacă fișierul există
-        if not Path(file_path).exists():
-            return False, "Fișierul nu a fost găsit", 0
-        
-        # Verificăm dimensiunea fișierului
-        file_size = Path(file_path).stat().st_size
-        if file_size == 0:
-            return False, "Fișierul este gol", 0
-        
-        max_size = 50 * 1024 * 1024  # 50MB
-        if file_size > max_size:
-            return False, f"Fișierul este prea mare: {file_size / (1024*1024):.1f}MB", 0
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            try:
-                json_data = json.load(f)
-            except json.JSONDecodeError as e:
-                return False, f"Fișierul JSON nu este valid: {str(e)}", 0
-        
-        if not isinstance(json_data, dict):
-            return False, "JSON-ul trebuie să fie un obiect (dicționar), nu o listă sau alt tip", 0
-        
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        if len(chunk_keys) == 0:
-            return False, "Nu s-au găsit chunk-uri. Cheile trebuie să înceapă cu 'chunk_'", 0
-        
-        valid_chunks = 0
-        for key in chunk_keys:
-            value = json_data[key]
-            
-            if not isinstance(value, dict):
-                return False, f"Chunk-ul '{key}' trebuie să fie un obiect (dicționar)", valid_chunks
-            
-            if "metadata" not in value:
-                return False, f"Chunk-ul '{key}' nu conține câmpul 'metadata'", valid_chunks
-            
-            if "chunk" not in value:
-                return False, f"Chunk-ul '{key}' nu conține câmpul 'chunk'", valid_chunks
-            
-            if not isinstance(value["chunk"], str) or len(value["chunk"].strip()) < 10:
-                return False, f"Chunk-ul '{key}' nu conține text valid (minim 10 caractere)", valid_chunks
-            
-            valid_chunks += 1
-        
-        return True, "", valid_chunks
-        
-    except Exception as e:
-        return False, f"Eroare la validarea fișierului: {str(e)}", 0
-
-
-def get_json_statistics(file_path: str) -> Dict[str, Any]:
-    """
-    Obține statistici despre un fișier JSON chunkizat.
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        
-    Returns:
-        Dicționar cu statistici despre fișier
-    """
-    try:
-        if not Path(file_path).exists():
-            return {"error": "Fișierul nu a fost găsit", "total_chunks": 0, "valid_chunks": 0}
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
-        
-        if not isinstance(json_data, dict):
-            return {"error": "JSON-ul nu este un dicționar", "total_chunks": 0, "valid_chunks": 0}
-        
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        # Sortăm chunk-urile
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999
-        
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-        
-        statistics = {
-            "total_chunks": len(chunk_keys),
-            "valid_chunks": 0,
-            "total_characters": 0,
-            "avg_chunk_length": 0,
-            "min_chunk_length": float('inf'),
-            "max_chunk_length": 0,
-            "sources": set(),
-            "chunk_ids": [],
-            "file_size_bytes": Path(file_path).stat().st_size,
-            "file_size_kb": Path(file_path).stat().st_size / 1024
-        }
-        
-        for key in sorted_keys:
-            value = json_data[key]
-            
-            if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-                chunk_content = str(value["chunk"]).strip()
-                chunk_length = len(chunk_content)
-                
-                if chunk_length >= 10:  # Considerăm doar chunk-urile valide
-                    statistics["valid_chunks"] += 1
-                    statistics["total_characters"] += chunk_length
-                    statistics["min_chunk_length"] = min(statistics["min_chunk_length"], chunk_length)
-                    statistics["max_chunk_length"] = max(statistics["max_chunk_length"], chunk_length)
-                    statistics["sources"].add(str(value["metadata"]))
-                    statistics["chunk_ids"].append(key)
-        
-        if statistics["valid_chunks"] > 0:
-            statistics["avg_chunk_length"] = statistics["total_characters"] / statistics["valid_chunks"]
-        else:
-            statistics["min_chunk_length"] = 0
-            
-        # Convertim set-ul în listă pentru JSON serialization
-        statistics["sources"] = list(statistics["sources"])
-        
-        return statistics
-        
-    except Exception as e:
-        logger.error(f"Eroare la calcularea statisticilor pentru {file_path}: {str(e)}")
-        return {
-            "error": str(e),
-            "total_chunks": 0,
-            "valid_chunks": 0,
-            "file_size_bytes": 0,
-            "file_size_kb": 0
-        }
-
-
-def preview_json_chunks(file_path: str, max_chunks: int = 3) -> Dict[str, Any]:
-    """
-    Oferă o previzualizare a primelor chunk-uri dintr-un fișier JSON.
-    
-    Args:
-        file_path: Calea către fișierul JSON
-        max_chunks: Numărul maxim de chunk-uri de previzualizat
-        
-    Returns:
-        Dicționar cu informații despre preview
-    """
-    try:
-        if not Path(file_path).exists():
-            return {"error": "Fișierul nu a fost găsit", "total_chunks": 0, "previewed_chunks": 0, "chunks": []}
-        
-        with open(file_path, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
-        
-        if not isinstance(json_data, dict):
-            return {"error": "JSON-ul nu este un dicționar", "total_chunks": 0, "previewed_chunks": 0, "chunks": []}
-        
-        chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-        
-        # Sortăm chunk-urile
-        def extract_chunk_number(key: str) -> int:
-            try:
-                return int(key.split("_")[1])
-            except (IndexError, ValueError):
-                return 999999
-        
-        sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-        
-        preview_data = {
-            "total_chunks": len(chunk_keys),
-            "previewed_chunks": min(max_chunks, len(chunk_keys)),
-            "chunks": [],
-            "file_info": {
-                "size_kb": Path(file_path).stat().st_size / 1024,
-                "name": Path(file_path).name
-            }
-        }
-        
-        for i, key in enumerate(sorted_keys[:max_chunks]):
-            value = json_data[key]
-            
-            if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-                chunk_content = str(value["chunk"]).strip()
-                preview_length = 200
-                
-                preview_data["chunks"].append({
-                    "chunk_id": key,
-                    "metadata": str(value["metadata"]),
-                    "content_preview": (chunk_content[:preview_length] + "..." 
-                                      if len(chunk_content) > preview_length 
-                                      else chunk_content),
-                    "content_length": len(chunk_content),
-                    "is_valid": len(chunk_content) >= 10
-                })
-        
-        return preview_data
-        
-    except Exception as e:
-        logger.error(f"Eroare la previzualizarea fișierului JSON: {str(e)}")
-        return {
-            "error": str(e),
-            "total_chunks": 0,
-            "previewed_chunks": 0,
-            "chunks": []
-        }
-
-
-def generate_file_hash(file_path: str) -> str:
-    """
-    Generează un hash pentru un fișier pentru detectarea duplicatelor.
-    
-    Args:
-        file_path: Calea către fișier
-        
-    Returns:
-        Hash-ul MD5 al fișierului
-    """
-    try:
-        hash_md5 = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-    except Exception as e:
-        logger.error(f"Eroare la generarea hash-ului pentru {file_path}: {str(e)}")
-        return ""
-
-
-def optimize_json_structure(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Optimizează structura unui JSON pentru procesare mai eficientă.
-    
-    Args:
-        json_data: Datele JSON de optimizat
-        
-    Returns:
-        JSON optimizat
-    """
-    if not isinstance(json_data, dict):
-        return json_data
-    
-    optimized = {}
-    chunk_keys = [k for k in json_data.keys() if k.startswith("chunk_")]
-    
-    # Sortăm și re-indexăm chunk-urile
-    def extract_chunk_number(key: str) -> int:
-        try:
-            return int(key.split("_")[1])
-        except (IndexError, ValueError):
-            return 999999
-    
-    sorted_keys = sorted(chunk_keys, key=extract_chunk_number)
-    
-    for i, key in enumerate(sorted_keys):
-        value = json_data[key]
-        
-        if isinstance(value, dict) and "metadata" in value and "chunk" in value:
-            # Optimizăm conținutul chunk-ului
-            chunk_content = str(value["chunk"]).strip()
-            
-            if len(chunk_content) >= 10:  # Doar chunk-urile valide
-                optimized[f"chunk_{i}"] = {
-                    "metadata": str(value["metadata"]).strip(),
-                    "chunk": chunk_content
-                }
-    
-    return optimized
-
-
-def batch_process_json_files(file_paths: List[str]) -> List[Tuple[str, List[Dict[str, Any]], Optional[str]]]:
-    """
-    Procesează mai multe fișiere JSON în batch pentru eficiență.
-    
-    Args:
-        file_paths: Lista căilor către fișierele JSON
-        
-    Returns:
-        Lista de tuple (file_path, chunks_data, error_message)
-    """
-    results = []
-    
-    for file_path in file_paths:
-        try:
-            chunks_data = process_json_chunks(file_path)
-            results.append((file_path, chunks_data, None))
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Eroare la procesarea {file_path}: {error_msg}")
-            results.append((file_path, [], error_msg))
-    
-    return results
+    print("=" * 50)

@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+google-generativeai
+chromadb
+aiofiles
+python-dotenv
+pydantic
+aiofiles
+python-dotenv
+pydantic
+colorlog
+diskcache

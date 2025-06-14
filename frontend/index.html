@@ -65,35 +65,6 @@
                     <!-- Tab Documente -->
                     <div class="tab-pane fade show active" id="documents" role="tabpanel">
                         <div class="p-3">
-                            <!-- Informații despre formatul JSON -->
-                            <div class="json-format-info">
-                                <h5><i class="bi bi-info-circle"></i> Format JSON Chunkizat Acceptat</h5>
-                                <p>Acest sistem acceptă <strong>EXCLUSIV</strong> fișiere JSON cu chunk-uri predefinite în următorul format:</p>
-                                <div class="json-example">
-{
-    "chunk_0": {
-        "metadata": "Source: document.pdf",
-        "chunk": "Conținutul primului chunk cu informații relevante..."
-    },
-    "chunk_1": {
-        "metadata": "Source: document.pdf", 
-        "chunk": "Conținutul celui de-al doilea chunk cu alte informații..."
-    },
-    "chunk_2": {
-        "metadata": "Source: document.pdf",
-        "chunk": "Și așa mai departe pentru fiecare chunk..."
-    }
-}
-                                </div>
-                                <div class="mt-2">
-                                    <small class="text-muted">
-                                        <i class="bi bi-check-circle"></i> Fiecare chunk va fi indexat separat pentru căutare semantică optimizată<br>
-                                        <i class="bi bi-check-circle"></i> Metadatele sunt păstrate pentru referințe sursă<br>
-                                        <i class="bi bi-check-circle"></i> Nu se acceptă alte formate de fișiere
-                                    </small>
-                                </div>
-                            </div>
-
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h4><i class="bi bi-files"></i> Fișiere JSON în colecție</h4>
                                 <button id="uploadDocumentBtn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal" disabled>
@@ -125,7 +96,7 @@
                             <div class="mb-3">
                                 <label for="queryInput" class="form-label">Întrebarea ta:</label>
                                 <textarea id="queryInput" class="form-control" rows="3" placeholder="Introdu întrebarea aici... (Ctrl+Enter pentru căutare rapidă)"></textarea>
-                                <div class="form-text">Sistemul va căuta în toate chunk-urile JSON și va genera un răspuns folosind Gemini AI</div>
+                                <div class="form-text">Sistemul va căuta în toate chunk-urile JSON și va genera un răspuns folosind AI</div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6">
@@ -202,24 +173,7 @@
                     <div class="mb-3">
                         <label for="documentFile" class="form-label">Selectează fișier JSON:</label>
                         <input type="file" class="form-control" id="documentFile" accept=".json" required>
-                        <div class="form-text">
-                            <i class="bi bi-file-earmark-code"></i> Doar fișiere JSON sunt acceptate (.json)
-                        </div>
-                    </div>
-                    
-                    <!-- Exemplu de format -->
-                    <div class="mb-3">
-                        <label class="form-label">Format JSON așteptat:</label>
-                        <div class="json-example-small">
-{
-  "chunk_0": {
-    "metadata": "Source: document.pdf",
-    "chunk": "Conținutul chunk-ului..."
-  }
-}
-                        </div>
-                    </div>
-                    
+                    </div>                   
                     <div class="progress d-none" id="uploadProgress">
                         <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                             <span id="uploadProgressText">0%</span>

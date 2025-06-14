@@ -708,7 +708,7 @@ async function handleQuery() {
                     <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                     <div>
                         <strong>Se procesează interogarea...</strong><br>
-                        <small>Căutare în chunk-urile JSON și generare răspuns cu Gemini AI</small>
+                        <small>Căutare în chunk-urile JSON și generare răspuns cu AI</small>
                     </div>
                 </div>
             </div>
@@ -776,7 +776,7 @@ function displayGeneratedResults(data, queryText) {
         <div class="answer-content mt-3">
             <div class="d-flex align-items-center mb-2">
                 <i class="bi bi-robot text-success fs-5 me-2"></i> 
-                <strong>Răspuns generat de Gemini AI:</strong>
+                <strong>Răspuns generat de AI:</strong>
             </div>
             <div class="answer-text">${formatAnswer(data.answer)}</div>
         </div>
