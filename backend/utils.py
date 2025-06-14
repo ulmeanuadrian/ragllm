@@ -290,3 +290,53 @@ def get_cache_info() -> Dict[str, Any]:
         "max_size": MAX_QUERY_CACHE_SIZE,
         "keys": list(_query_cache.keys())[:10]  # Primele 10 chei pentru debug
     }
+
+# Funcții specifice pentru JSON chunkizat - eliminate funcțiile pentru PDF
+# Nu mai avem nevoie de process_pdf_optimized sau alte funcții pentru alte formate
+
+def preview_json_chunks(file_path: str, max_chunks: int = 3) -> Dict[str, Any]:
+    """
+    Oferă o previzualizare a primelor chunk-uri dintr-un fișier JSON.
+    
+    Args:
+        file_path: Calea către fișierul JSON
+        max_chunks: Numărul maxim de chunk-uri de previzualizat
+        
+    Returns:
+        Dicționar cu informații despre preview
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            json_data = json.load(f)
+        
+        chunk_keys = sorted([k for k in json_data.keys() if k.startswith("chunk_")], 
+                           key=lambda x: int(x.split("_")[1]) if x.split("_")[1].isdigit() else 999999)
+        
+        preview_data = {
+            "total_chunks": len(chunk_keys),
+            "previewed_chunks": min(max_chunks, len(chunk_keys)),
+            "chunks": []
+        }
+        
+        for i, key in enumerate(chunk_keys[:max_chunks]):
+            value = json_data[key]
+            
+            if isinstance(value, dict) and "metadata" in value and "chunk" in value:
+                chunk_content = value["chunk"].strip()
+                preview_data["chunks"].append({
+                    "chunk_id": key,
+                    "metadata": value["metadata"],
+                    "content_preview": chunk_content[:200] + "..." if len(chunk_content) > 200 else chunk_content,
+                    "content_length": len(chunk_content)
+                })
+        
+        return preview_data
+        
+    except Exception as e:
+        logger.error(f"Eroare la previzualizarea fișierului JSON: {str(e)}")
+        return {
+            "error": str(e),
+            "total_chunks": 0,
+            "previewed_chunks": 0,
+            "chunks": []
+        }

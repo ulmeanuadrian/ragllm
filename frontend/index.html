@@ -6,231 +6,26 @@
     <title>Sistem RAG - JSON Chunkizat</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f8f9fa;
-            padding-top: 20px;
-        }
-
-        .sidebar {
-            background-color: #fff;
-            border-right: 1px solid #dee2e6;
-            padding: 20px;
-            height: calc(100vh - 40px);
-            overflow-y: auto;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
-        }
-
-        .main-content {
-            padding: 20px;
-            height: calc(100vh - 40px);
-            overflow-y: auto;
-        }
-
-        .list-group-item {
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .list-group-item:hover {
-            background-color: #f1f3f5;
-        }
-
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            min-width: 300px;
-            max-width: 400px;
-            background-color: #fff;
-            border-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            z-index: 9999;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: transform 0.3s ease, opacity 0.3s ease;
-        }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .toast-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-        }
-
-        .toast.success {
-            border-left: 4px solid #28a745;
-        }
-
-        .toast.error {
-            border-left: 4px solid #dc3545;
-        }
-
-        .toast.warning {
-            border-left: 4px solid #ffc107;
-        }
-
-        .close-toast {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #6c757d;
-        }
-
-        .close-toast:hover {
-            color: #343a40;
-        }
-
-        .list-group-item.active {
-            background-color: #0d6efd;
-            border-color: #0d6efd;
-        }
-
-        .list-group-item .actions {
-            display: none;
-        }
-
-        .list-group-item:hover .actions {
-            display: block;
-        }
-
-        .tab-content {
-            background-color: #fff;
-            border: 1px solid #dee2e6;
-            border-top: none;
-            position: relative;
-            border-radius: 0 0 5px 5px;
-            padding: 15px;
-            min-height: 400px;
-        }
-
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #0d6efd;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading {
-            position: relative;
-        }
-
-        .generated-answer {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-
-        .question-title {
-            font-size: 1.1rem;
-            color: #495057;
-            margin-bottom: 10px;
-        }
-
-        .answer-content {
-            background-color: #fff;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            padding: 15px;
-            line-height: 1.6;
-            color: #212529;
-        }
-
-        .result-card {
-            margin-bottom: 15px;
-            border-left: 4px solid #0d6efd;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-
-        .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .result-number {
-            font-weight: bold;
-            color: #0d6efd;
-        }
-
-        .result-score {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
-
-        .result-content {
-            margin-bottom: 10px;
-            line-height: 1.6;
-        }
-
-        .result-meta {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
-
-        .json-format-info {
-            background-color: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-
-        .json-example {
-            background-color: #f5f5f5;
-            border-radius: 3px;
-            padding: 10px;
-            margin-top: 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            overflow-x: auto;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar pentru foldere -->
+            <!-- Sidebar pentru colecții -->
             <div class="col-md-3 sidebar">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3>Colecții JSON</h3>
+                    <h3><i class="bi bi-file-earmark-code"></i> Colecții JSON</h3>
                     <button id="createCollectionBtn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createCollectionModal">
                         <i class="bi bi-plus-circle"></i> Nou
                     </button>
                 </div>
+                
+                <!-- Informații despre sistem -->
+                <div class="alert alert-info p-2 mb-3">
+                    <small><i class="bi bi-info-circle"></i> <strong>Doar JSON chunkizat</strong><br>
+                    Sistem optimizat pentru fișiere JSON cu chunk-uri predefinite.</small>
+                </div>
+                
                 <div class="input-group mb-3">
                     <input type="text" id="searchCollections" class="form-control" placeholder="Caută colecții...">
                     <button class="btn btn-outline-secondary" type="button">
@@ -247,17 +42,21 @@
                 <div class="row mb-4">
                     <div class="col">
                         <h2 id="currentCollection">Selectați o colecție</h2>
-                        <p class="text-muted">Sistem RAG optimizat pentru fișiere JSON chunkizate</p>
+                        <p class="text-muted">Sistem RAG optimizat pentru fișiere JSON cu chunk-uri predefinite</p>
                     </div>
                 </div>
 
                 <!-- Tab-uri pentru diferite funcționalități -->
                 <ul class="nav nav-tabs" id="mainTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">Documente JSON</button>
+                        <button class="nav-link active" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">
+                            <i class="bi bi-file-earmark-code"></i> Documente JSON
+                        </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="query-tab" data-bs-toggle="tab" data-bs-target="#query" type="button" role="tab">Interogare</button>
+                        <button class="nav-link" id="query-tab" data-bs-toggle="tab" data-bs-target="#query" type="button" role="tab">
+                            <i class="bi bi-search"></i> Interogare
+                        </button>
                     </li>
                 </ul>
 
@@ -268,25 +67,35 @@
                         <div class="p-3">
                             <!-- Informații despre formatul JSON -->
                             <div class="json-format-info">
-                                <h5><i class="bi bi-info-circle"></i> Format JSON Chunkizat</h5>
-                                <p>Acest sistem acceptă <strong>DOAR</strong> fișiere JSON cu chunk-uri predefinite în următorul format:</p>
+                                <h5><i class="bi bi-info-circle"></i> Format JSON Chunkizat Acceptat</h5>
+                                <p>Acest sistem acceptă <strong>EXCLUSIV</strong> fișiere JSON cu chunk-uri predefinite în următorul format:</p>
                                 <div class="json-example">
 {
     "chunk_0": {
         "metadata": "Source: document.pdf",
-        "chunk": "Conținutul primului chunk..."
+        "chunk": "Conținutul primului chunk cu informații relevante..."
     },
     "chunk_1": {
         "metadata": "Source: document.pdf", 
-        "chunk": "Conținutul celui de-al doilea chunk..."
+        "chunk": "Conținutul celui de-al doilea chunk cu alte informații..."
+    },
+    "chunk_2": {
+        "metadata": "Source: document.pdf",
+        "chunk": "Și așa mai departe pentru fiecare chunk..."
     }
 }
                                 </div>
-                                <small class="text-muted">Fiecare chunk va fi indexat separat pentru căutare semantică optimizată.</small>
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="bi bi-check-circle"></i> Fiecare chunk va fi indexat separat pentru căutare semantică optimizată<br>
+                                        <i class="bi bi-check-circle"></i> Metadatele sunt păstrate pentru referințe sursă<br>
+                                        <i class="bi bi-check-circle"></i> Nu se acceptă alte formate de fișiere
+                                    </small>
+                                </div>
                             </div>
 
                             <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h4>Fișiere JSON în colecție</h4>
+                                <h4><i class="bi bi-files"></i> Fișiere JSON în colecție</h4>
                                 <button id="uploadDocumentBtn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal" disabled>
                                     <i class="bi bi-upload"></i> Încarcă JSON
                                 </button>
@@ -295,10 +104,10 @@
                                 <table class="table table-hover">
                                     <thead>
                                         <tr>
-                                            <th>Nume fișier JSON</th>
-                                            <th>Chunk-uri procesate</th>
-                                            <th>Data încărcării</th>
-                                            <th>Acțiuni</th>
+                                            <th><i class="bi bi-file-earmark-code"></i> Nume fișier JSON</th>
+                                            <th><i class="bi bi-collection"></i> Chunk-uri procesate</th>
+                                            <th><i class="bi bi-calendar"></i> Data încărcării</th>
+                                            <th><i class="bi bi-gear"></i> Acțiuni</th>
                                         </tr>
                                     </thead>
                                     <tbody id="documentsList">
@@ -312,23 +121,26 @@
                     <!-- Tab Interogare -->
                     <div class="tab-pane fade" id="query" role="tabpanel">
                         <div class="p-3">
-                            <h4>Interogare colecție JSON</h4>
+                            <h4><i class="bi bi-chat-square-text"></i> Interogare colecție JSON</h4>
                             <div class="mb-3">
                                 <label for="queryInput" class="form-label">Întrebarea ta:</label>
-                                <textarea id="queryInput" class="form-control" rows="3" placeholder="Introdu întrebarea aici..."></textarea>
+                                <textarea id="queryInput" class="form-control" rows="3" placeholder="Introdu întrebarea aici... (Ctrl+Enter pentru căutare rapidă)"></textarea>
+                                <div class="form-text">Sistemul va căuta în toate chunk-urile JSON și va genera un răspuns folosind Gemini AI</div>
                             </div>
                             <div class="row">
                                 <div class="col-md-6">
-                                    <label for="topK" class="form-label">Număr de rezultate:</label>
+                                    <label for="topK" class="form-label">Număr de chunk-uri relevante:</label>
                                     <input type="number" id="topK" class="form-control" value="5" min="1" max="20">
+                                    <div class="form-text">Câte chunk-uri să fie folosite pentru generarea răspunsului</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label for="temperature" class="form-label">Temperatură generare:</label>
                                     <input type="number" id="temperature" class="form-control" value="0.2" min="0" max="1" step="0.1">
+                                    <div class="form-text">0.0 = răspunsuri consistente, 1.0 = răspunsuri creative</div>
                                 </div>
                             </div>
-                            <button id="runQueryBtn" class="btn btn-primary mt-3" disabled>
-                                <i class="bi bi-search"></i> Caută și Generează Răspuns
+                            <button id="runQueryBtn" class="btn btn-primary btn-lg mt-3" disabled>
+                                <i class="bi bi-robot"></i> Caută și Generează Răspuns cu Gemini
                             </button>
 
                             <div id="queryResults" class="mt-4">
@@ -346,19 +158,24 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Creare colecție nouă</h5>
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Creare colecție nouă</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="collectionName" class="form-label">Nume colecție:</label>
-                        <input type="text" class="form-control" id="collectionName" placeholder="Introdu numele colecției">
+                        <input type="text" class="form-control" id="collectionName" placeholder="ex: documentatie_streamlit">
                         <div class="form-text">Numele trebuie să conțină doar litere, cifre și underscore (_).</div>
+                    </div>
+                    <div class="alert alert-info">
+                        <small><i class="bi bi-info-circle"></i> Colecția va stoca chunk-urile din fișierele JSON încărcate și va permite căutarea semantică în conținutul acestora.</small>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
-                    <button type="button" id="saveCollectionBtn" class="btn btn-primary">Salvează</button>
+                    <button type="button" id="saveCollectionBtn" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Creează Colecția
+                    </button>
                 </div>
             </div>
         </div>
@@ -366,29 +183,56 @@
 
     <!-- Modal pentru încărcarea unui document JSON -->
     <div class="modal fade" id="uploadDocumentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Încărcare fișier JSON chunkizat</h5>
+                    <h5 class="modal-title"><i class="bi bi-upload"></i> Încărcare fișier JSON chunkizat</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-info">
-                        <h6><i class="bi bi-info-circle"></i> Format acceptat:</h6>
-                        <small>Doar fișiere JSON cu chunk-uri în formatul: <code>{"chunk_0": {"metadata": "...", "chunk": "..."}}</code></small>
+                    <div class="alert alert-warning">
+                        <h6><i class="bi bi-exclamation-triangle"></i> IMPORTANT - Format acceptat:</h6>
+                        <ul class="mb-0">
+                            <li>Doar fișiere cu extensia <code>.json</code></li>
+                            <li>Trebuie să conțină chunk-uri în formatul: <code>{"chunk_0": {"metadata": "...", "chunk": "..."}}</code></li>
+                            <li>Nu se acceptă PDF, DOCX, TXT sau alte formate</li>
+                        </ul>
                     </div>
+                    
                     <div class="mb-3">
                         <label for="documentFile" class="form-label">Selectează fișier JSON:</label>
                         <input type="file" class="form-control" id="documentFile" accept=".json" required>
-                        <div class="form-text">Doar fișiere JSON sunt acceptate (.json)</div>
+                        <div class="form-text">
+                            <i class="bi bi-file-earmark-code"></i> Doar fișiere JSON sunt acceptate (.json)
+                        </div>
                     </div>
+                    
+                    <!-- Exemplu de format -->
+                    <div class="mb-3">
+                        <label class="form-label">Format JSON așteptat:</label>
+                        <div class="json-example-small">
+{
+  "chunk_0": {
+    "metadata": "Source: document.pdf",
+    "chunk": "Conținutul chunk-ului..."
+  }
+}
+                        </div>
+                    </div>
+                    
                     <div class="progress d-none" id="uploadProgress">
-                        <div class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            <span id="uploadProgressText">0%</span>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
-                    <button type="button" id="startUploadBtn" class="btn btn-primary">Încarcă JSON</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Anulează
+                    </button>
+                    <button type="button" id="startUploadBtn" class="btn btn-success">
+                        <i class="bi bi-upload"></i> Încarcă JSON
+                    </button>
                 </div>
             </div>
         </div>
@@ -399,633 +243,142 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Confirmare ștergere</h5>
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle text-danger"></i> Confirmare ștergere</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p id="deleteConfirmText">Ești sigur că vrei să ștergi acest element?</p>
+                    <div class="alert alert-danger">
+                        <small><i class="bi bi-exclamation-triangle"></i> Această acțiune nu poate fi anulată!</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
-                    <button type="button" id="confirmDeleteBtn" class="btn btn-danger">Șterge</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Anulează
+                    </button>
+                    <button type="button" id="confirmDeleteBtn" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Șterge definitiv
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Configurare API
-        const API_BASE_URL = 'http://localhost:8070';
-
-        // Variabile globale
-        let currentCollection = null;
-        let documentsList = [];
-
-        // Funcții utilitare
-        function showLoading(selector) {
-            const element = document.querySelector(selector);
-            element.classList.add('loading');
-            
-            if (!element.querySelector('.loading-overlay')) {
-                const overlay = document.createElement('div');
-                overlay.className = 'loading-overlay';
-                
-                const spinner = document.createElement('div');
-                spinner.className = 'spinner';
-                overlay.appendChild(spinner);
-                
-                const loadingText = document.createElement('div');
-                loadingText.className = 'loading-text';
-                loadingText.textContent = 'Se încarcă...';
-                loadingText.style.marginLeft = '10px';
-                loadingText.style.fontWeight = 'bold';
-                overlay.appendChild(loadingText);
-                
-                element.appendChild(overlay);
-            } else {
-                element.querySelector('.loading-overlay').style.display = 'flex';
-            }
+    <script src="script.js"></script>
+    
+    <!-- Stiluri suplimentare pentru JSON -->
+    <style>
+        .json-format-info {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        function hideLoading(selector) {
-            const element = document.querySelector(selector);
-            element.classList.remove('loading');
-            
-            const overlay = element.querySelector('.loading-overlay');
-            if (overlay) {
-                overlay.style.display = 'none';
-            }
+        .json-example {
+            background-color: #263238;
+            color: #80cbc4;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            border-left: 4px solid #00acc1;
+            white-space: pre;
+            line-height: 1.4;
         }
 
-        function showToast(message, type = 'success') {
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <div class="toast-content">
-                    <span>${message}</span>
-                    <button class="close-toast">&times;</button>
-                </div>
-            `;
-            
-            document.body.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.classList.add('show');
-            }, 10);
-            
-            toast.querySelector('.close-toast').addEventListener('click', () => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    document.body.removeChild(toast);
-                }, 300);
-            });
-            
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    if (document.body.contains(toast)) {
-                        document.body.removeChild(toast);
-                    }
-                }, 300);
-            }, 5000);
+        .json-example-small {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre;
         }
 
-        // Funcție pentru gestionarea erorilor de rețea
-        async function fetchWithErrorHandling(url, options = {}) {
-            try {
-                const response = await fetch(url, options);
-                
-                if (!response.ok) {
-                    let errorMessage = 'A apărut o eroare în comunicația cu serverul.';
-                    try {
-                        const errorData = await response.json();
-                        errorMessage = errorData.detail || errorData.message || errorMessage;
-                    } catch (e) {
-                        errorMessage = `Eroare ${response.status}: ${response.statusText}`;
-                    }
-                    
-                    throw new Error(errorMessage);
-                }
-                
-                return await response.json();
-            } catch (error) {
-                console.error('Eroare de rețea:', error);
-                showToast(error.message || 'A apărut o eroare în comunicația cu serverul. Încercați din nou.', 'error');
-                throw error;
-            }
+        .result-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-left: 4px solid #0d6efd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
-        // Funcții pentru gestionarea colecțiilor
-        function populateCollectionsList(collections) {
-            const collectionsList = document.getElementById('collectionsList');
-            collectionsList.innerHTML = '';
-            
-            if (collections.length === 0) {
-                collectionsList.innerHTML = '<li class="list-group-item">Nu există colecții. Creați una nouă.</li>';
-                return;
-            }
-            
-            collections.forEach(collection => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.innerHTML = `
-                    <span>${collection}</span>
-                    <div class="actions">
-                        <button class="btn btn-sm btn-danger delete-collection" data-collection="${collection}">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                `;
-                li.addEventListener('click', () => selectCollection(collection));
-                collectionsList.appendChild(li);
-            });
-            
-            document.querySelectorAll('.delete-collection').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const collection = button.getAttribute('data-collection');
-                    showDeleteConfirmation('collection', collection);
-                });
-            });
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
 
-        async function loadCollections() {
-            try {
-                showLoading('.sidebar');
-                const collections = await fetchWithErrorHandling(`${API_BASE_URL}/collections`);
-                populateCollectionsList(collections);
-            } catch (error) {
-                console.log('Serverul nu este disponibil momentan. Se afișează interfața fără colecții.');
-                populateCollectionsList([]);
-            } finally {
-                hideLoading('.sidebar');
-            }
+        .generated-answer {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border: 1px solid #ffcc02;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
         }
 
-        async function createCollection(name) {
-            try {
-                if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
-                    showToast('Numele colecției trebuie să conțină doar litere, cifre și underscore (_).', 'error');
-                    return false;
-                }
-                
-                const response = await fetch(`${API_BASE_URL}/collections`);
-                let collections = [];
-                
-                if (response.ok) {
-                    collections = await response.json();
-                } else {
-                    console.warn('Eroare HTTP:', response.status);
-                }
-                
-                if (collections.includes(name)) {
-                    showToast(`Colecția "${name}" există deja.`, 'error');
-                    return false;
-                }
-                
-                const createResponse = await fetch(`${API_BASE_URL}/collections/${name}`, {
-                    method: 'POST'
-                });
-                
-                if (createResponse.ok) {
-                    const result = await createResponse.json();
-                    showToast(`Colecția "${name}" a fost creată cu succes. Încărcați fișiere JSON pentru a o popula.`);
-                    await loadCollections();
-                    selectCollection(name);
-                } else {
-                    showToast(`Eroare la crearea colecției "${name}".`, 'error');
-                    return false;
-                }
-                return true;
-            } catch (error) {
-                console.error('Eroare la crearea colecției:', error);
-                showToast('Eroare la crearea colecției. Verificați consola pentru detalii.', 'error');
-                return false;
-            }
+        .answer-content {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            line-height: 1.7;
+            color: #333;
+            font-size: 1.05rem;
         }
 
-        async function deleteCollection(name) {
-            try {
-                showLoading('.main-content');
-                
-                const response = await fetch(`${API_BASE_URL}/collections/${name}`, {
-                    method: 'DELETE'
-                });
-                
-                const success = response.ok;
-                
-                if (success) {
-                    showToast(`Colecția "${name}" a fost ștearsă cu succes.`);
-                    if (currentCollection === name) {
-                        currentCollection = null;
-                        document.getElementById('currentCollection').textContent = 'Selectați o colecție';
-                        document.getElementById('uploadDocumentBtn').disabled = true;
-                        document.getElementById('runQueryBtn').disabled = true;
-                        document.getElementById('documentsList').innerHTML = '';
-                    }
-                    await loadCollections();
-                    return true;
-                } else {
-                    throw new Error('Eroare la ștergerea colecției');
-                }
-            } catch (error) {
-                console.error('Eroare la ștergerea colecției:', error);
-                showToast(`Eroare la ștergerea colecției: ${error.message}`, 'error');
-                return false;
-            } finally {
-                hideLoading('.main-content');
-            }
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,123,255,0.3);
         }
 
-        function selectCollection(name) {
-            currentCollection = name;
-            document.getElementById('currentCollection').textContent = `Colecția: ${name}`;
-            document.getElementById('uploadDocumentBtn').disabled = false;
-            document.getElementById('runQueryBtn').disabled = false;
-            
-            // Marchează colecția selectată în listă
-            document.querySelectorAll('#collectionsList .list-group-item').forEach(item => {
-                if (item.querySelector('span')?.textContent === name) {
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
-            });
-            
-            // Încarcă documentele din colecție
-            loadDocuments(name);
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,123,255,0.4);
         }
 
-        // Funcții pentru gestionarea documentelor JSON
-        async function loadDocuments(collectionName) {
-            try {
-                showLoading('.main-content');
-                
-                const documents = await fetchWithErrorHandling(`${API_BASE_URL}/collections/${collectionName}/documents`);
-                
-                const documentsList = document.getElementById('documentsList');
-                
-                if (documents.length === 0) {
-                    documentsList.innerHTML = '<tr><td colspan="4" class="text-center">Nu există fișiere JSON în această colecție. Încărcați fișiere noi.</td></tr>';
-                    return;
-                }
-                
-                window.documentsList = documents;
-                
-                let html = '';
-                documents.forEach(file => {
-                    html += `
-                    <tr>
-                        <td><i class="bi bi-file-earmark-code"></i> ${file.source || 'Necunoscut'}</td>
-                        <td><span class="badge bg-primary">${file.doc_count} chunk-uri</span></td>
-                        <td>${file.created_at || '-'}</td>
-                        <td>
-                            <button class="btn btn-sm btn-danger delete-document" data-source="${file.source}">
-                                <i class="bi bi-trash"></i> Șterge
-                            </button>
-                        </td>
-                    </tr>
-                    `;
-                });
-                
-                documentsList.innerHTML = html;
-                
-                document.querySelectorAll('.delete-document').forEach(button => {
-                    button.addEventListener('click', () => {
-                        const source = button.getAttribute('data-source');
-                        showDeleteConfirmation('document', source);
-                    });
-                });
-            } catch (error) {
-                console.error('Eroare la încărcarea documentelor:', error);
-                document.getElementById('documentsList').innerHTML = 
-                    '<tr><td colspan="4" class="text-center">Eroare la încărcarea documentelor. Verificați consola pentru detalii.</td></tr>';
-            } finally {
-                hideLoading('.main-content');
-            }
+        .sidebar {
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
         }
 
-        async function uploadDocument(collectionName, file) {
-            try {
-                if (!file) {
-                    showToast('Selectați un fișier pentru încărcare.', 'error');
-                    return false;
-                }
-                
-                // Verificăm dacă este fișier JSON
-                if (!file.name.toLowerCase().endsWith('.json')) {
-                    showToast('Sunt acceptate DOAR fișiere JSON (.json).', 'error');
-                    return false;
-                }
-                
-                if (file.type !== 'application/json' && file.type !== 'text/json') {
-                    showToast('Tipul fișierului trebuie să fie JSON.', 'warning');
-                }
-                
-                showLoading('.main-content');
-                
-                const formData = new FormData();
-                formData.append('file', file);
-                
-                const response = await fetch(`${API_BASE_URL}/collections/${collectionName}/upload`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    showToast(`Fișierul JSON "${file.name}" a fost procesat cu succes. ${result.chunks_count || 'Multiple'} chunk-uri au fost indexate.`);
-                    return true;
-                } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Eroare la încărcarea documentului JSON');
-                }
-            } catch (error) {
-                console.error('Eroare la încărcarea documentului:', error);
-                showToast(`Eroare la încărcarea documentului: ${error.message}`, 'error');
-                return false;
-            } finally {
-                hideLoading('.main-content');
-            }
+        .alert-info {
+            background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+            border-color: #85c5d3;
         }
 
-        async function deleteDocument(collectionName, source) {
-            try {
-                showLoading('.main-content');
-                
-                const response = await fetch(`${API_BASE_URL}/collections/${collectionName}/documents`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ source: source })
-                });
-                
-                const success = response.ok;
-                
-                if (success) {
-                    showToast(`Documentul JSON "${source}" a fost șters cu succes.`);
-                    await loadDocuments(collectionName);
-                    return true;
-                } else {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || 'Eroare la ștergerea documentului');
-                }
-            } catch (error) {
-                console.error('Eroare la ștergerea documentului:', error);
-                showToast(`Eroare la ștergerea documentului: ${error.message}`, 'error');
-                return false;
-            } finally {
-                hideLoading('.main-content');
-            }
+        .badge {
+            font-size: 0.8rem;
+            padding: 6px 12px;
         }
 
-        // Funcții pentru interogare și generare
-        async function handleQuery() {
-            const queryText = document.getElementById('queryInput').value.trim();
-            if (!queryText) {
-                showToast('Introduceți o întrebare pentru interogare.', 'error');
-                return;
-            }
-            
-            if (!currentCollection) {
-                showToast('Selectați o colecție pentru interogare.', 'error');
-                return;
-            }
-            
-            const topK = parseInt(document.getElementById('topK').value) || 5;
-            const temperature = parseFloat(document.getElementById('temperature').value) || 0.2;
-            
-            showLoading('#query');
-            
-            try {
-                const resultsContainer = document.getElementById('queryResults');
-                resultsContainer.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Se procesează interogarea și se generează răspunsul cu Gemini...</div>';
-                
-                // Generăm răspunsul direct cu Gemini
-                try {
-                    const response = await fetch(`${API_BASE_URL}/collections/${currentCollection}/generate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            query: queryText,
-                            temperature: temperature,
-                            top_k_docs: topK
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        displayGeneratedResults(data, queryText);
-                    } else {
-                        const errorData = await response.json();
-                        throw new Error(errorData.detail || 'Eroare la generarea răspunsului');
-                    }
-                } catch (genError) {
-                    console.error('Eroare la generarea răspunsului:', genError);
-                    showToast(`Eroare la generarea răspunsului: ${genError.message}`, 'error');
-                    
-                    resultsContainer.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> A apărut o eroare la generarea răspunsului.</div>';
-                }
-            } catch (error) {
-                console.error('Eroare la procesarea interogării:', error);
-                showToast('Eroare la procesarea interogării. Verificați consola pentru detalii.', 'error');
-                
-                const resultsContainer = document.getElementById('queryResults');
-                resultsContainer.innerHTML = '<div class="alert alert-danger">A apărut o eroare la procesarea interogării.</div>';
-            } finally {
-                hideLoading('#query');
-            }
+        .table th {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 2px solid #dee2e6;
+            font-weight: 600;
         }
 
-        function displayGeneratedResults(data, queryText) {
-            const resultsContainer = document.getElementById('queryResults');
-            resultsContainer.innerHTML = '';
-            
-            if (!data || !data.answer) {
-                const noResults = document.createElement('div');
-                noResults.className = 'alert alert-warning';
-                noResults.innerHTML = '<i class="bi bi-exclamation-circle"></i> Nu s-a putut genera un răspuns pentru această interogare.';
-                resultsContainer.appendChild(noResults);
-                
-                if (data && data.documents && data.documents.length > 0) {
-                    displayQueryResults(data.documents);
-                }
-                return;
-            }
-            
-            // Creăm containerul pentru răspunsul generat
-            const answerContainer = document.createElement('div');
-            answerContainer.className = 'generated-answer mb-4';
-            
-            // Adăugăm titlul și întrebarea
-            const questionTitle = document.createElement('div');
-            questionTitle.className = 'question-title';
-            questionTitle.innerHTML = `<i class="bi bi-question-circle"></i> <strong>Întrebare:</strong> ${queryText}`;
-            answerContainer.appendChild(questionTitle);
-            
-            // Adăugăm răspunsul generat
-            const answerContent = document.createElement('div');
-            answerContent.className = 'answer-content mt-2 p-3 border rounded';
-            answerContent.innerHTML = `<i class="bi bi-robot"></i> <strong>Răspuns Gemini:</strong><br><br>${data.answer.replace(/\n/g, '<br>')}`;
-            answerContainer.appendChild(answerContent);
-            
-            resultsContainer.appendChild(answerContainer);
-            
-            // Adăugăm un separator
-            const separator = document.createElement('hr');
-            resultsContainer.appendChild(separator);
-            
-            // Adăugăm titlul pentru documente sursă
-            const sourcesTitle = document.createElement('h5');
-            sourcesTitle.className = 'mt-3 mb-3';
-            sourcesTitle.innerHTML = '<i class="bi bi-file-text"></i> Chunk-uri sursă JSON:';
-            resultsContainer.appendChild(sourcesTitle);
-            
-            // Afișăm documentele sursă
-            if (data.documents && data.documents.length > 0) {
-                displayQueryResults(data.documents, true);
-            } else {
-                const noSources = document.createElement('div');
-                noSources.className = 'alert alert-info';
-                noSources.innerHTML = '<i class="bi bi-info-circle"></i> Nu sunt disponibile chunk-uri sursă.';
-                resultsContainer.appendChild(noSources);
-            }
+        .list-group-item.active {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            border-color: #007bff;
         }
 
-        function displayQueryResults(results, isSourceDocuments = false) {
-            const resultsContainer = document.getElementById('queryResults');
-            
-            if (!isSourceDocuments) {
-                resultsContainer.innerHTML = '';
-            }
-            
-            if (!results || (Array.isArray(results) && results.length === 0)) {
-                const noResults = document.createElement('div');
-                noResults.className = 'alert alert-info';
-                noResults.innerHTML = '<i class="bi bi-info-circle"></i> Nu s-au găsit rezultate pentru această interogare.';
-                resultsContainer.appendChild(noResults);
-                return;
-            }
-            
-            const resultsArray = Array.isArray(results) ? results : [results];
-            
-            resultsArray.forEach((result, index) => {
-                const resultCard = document.createElement('div');
-                resultCard.className = 'result-card';
-                
-                const score = result.score ? (result.score * 100).toFixed(2) : 'N/A';
-                const source = result.meta && result.meta.original_source ? result.meta.original_source : 'Necunoscută';
-                const chunkId = result.meta && result.meta.chunk_id ? result.meta.chunk_id : `chunk_${index}`;
-                
-                resultCard.innerHTML = `
-                    <div class="result-header">
-                        <span class="result-number"><i class="bi bi-file-earmark-code"></i> ${chunkId}</span>
-                        <span class="result-score">Relevanță: ${score}%</span>
-                    </div>
-                    <div class="result-content">
-                        <p>${result.content}</p>
-                    </div>
-                    <div class="result-meta">
-                        <small class="text-muted">
-                            <i class="bi bi-file-text"></i> Sursă: ${source}
-                        </small>
-                    </div>
-                `;
-                
-                resultsContainer.appendChild(resultCard);
-            });
+        .nav-tabs .nav-link.active {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-color: #dee2e6 #dee2e6 #fff;
+            font-weight: 600;
         }
-
-        // Funcție pentru confirmarea ștergerii
-        function showDeleteConfirmation(type, name) {
-            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            const confirmText = document.getElementById('deleteConfirmText');
-            const confirmBtn = document.getElementById('confirmDeleteBtn');
-            
-            if (type === 'collection') {
-                confirmText.textContent = `Ești sigur că vrei să ștergi colecția "${name}"? Această acțiune nu poate fi anulată.`;
-                confirmBtn.onclick = async () => {
-                    modal.hide();
-                    await deleteCollection(name);
-                };
-            } else if (type === 'document') {
-                confirmText.textContent = `Ești sigur că vrei să ștergi fișierul JSON "${name}" din colecția "${currentCollection}"? Această acțiune nu poate fi anulată.`;
-                confirmBtn.onclick = async () => {
-                    modal.hide();
-                    await deleteDocument(currentCollection, name);
-                };
-            }
-            
-            modal.show();
-        }
-
-        // Event listeners
-        document.addEventListener('DOMContentLoaded', () => {
-            // Încarcă colecțiile la pornirea aplicației
-            loadCollections();
-            
-            // Event listener pentru crearea unei colecții noi
-            document.getElementById('saveCollectionBtn').addEventListener('click', async () => {
-                const collectionName = document.getElementById('collectionName').value.trim();
-                const success = await createCollection(collectionName);
-                if (success) {
-                    bootstrap.Modal.getInstance(document.getElementById('createCollectionModal')).hide();
-                    document.getElementById('collectionName').value = '';
-                }
-            });
-            
-            // Event listener pentru încărcarea unui document JSON
-            const startUploadBtn = document.getElementById('startUploadBtn');
-            startUploadBtn.replaceWith(startUploadBtn.cloneNode(true));
-            
-            document.getElementById('startUploadBtn').addEventListener('click', async () => {
-                const fileInput = document.getElementById('documentFile');
-                if (!fileInput.files || fileInput.files.length === 0) {
-                    showToast('Selectați un fișier JSON pentru încărcare.', 'error');
-                    return;
-                }
-                
-                if (!currentCollection) {
-                    showToast('Selectați o colecție pentru încărcare.', 'error');
-                    return;
-                }
-                
-                const file = fileInput.files[0];
-                const success = await uploadDocument(currentCollection, file);
-                if (success) {
-                    bootstrap.Modal.getInstance(document.getElementById('uploadDocumentModal')).hide();
-                    fileInput.value = '';
-                    await loadDocuments(currentCollection);
-                }
-            });
-            
-            // Event listener pentru interogare
-            document.getElementById('runQueryBtn').addEventListener('click', handleQuery);
-            
-            // Event listener pentru căutarea în colecții
-            document.getElementById('searchCollections').addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                document.querySelectorAll('#collectionsList .list-group-item').forEach(item => {
-                    const collectionName = item.querySelector('span')?.textContent.toLowerCase();
-                    if (collectionName && collectionName.includes(searchTerm)) {
-                        item.style.display = '';
-                    } else {
-                        item.style.display = 'none';
-                    }
-                });
-            });
-
-            // Event listener pentru Enter în câmpul de interogare
-            document.getElementById('queryInput').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && e.ctrlKey) {
-                    handleQuery();
-                }
-            });
-        });
-    </script>
+    </style>
 </body>
 </html>
