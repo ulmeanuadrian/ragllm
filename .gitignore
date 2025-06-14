@@ -16,6 +16,7 @@ build/
 .env.local
 
 # Fișiere de cache
+chroma_db/
 .cache/
 .pytest_cache/
 

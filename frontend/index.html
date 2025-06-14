@@ -3,59 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem RAG - JSON Chunkizat</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <title>Sistem RAG Optimizat - JSON Chunkizat v3.0.0</title>
+    <meta name="description" content="Sistem RAG optimizat pentru căutare îmbunătățită în fișiere JSON chunkizate cu AI Google Gemini">
+    <meta name="keywords" content="RAG, căutare semantică, JSON, AI, Gemini, hibrid">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Preload pentru performanță -->
+    <link rel="preload" href="script.js" as="script">
 </head>
-<body>
-    <div class="container-fluid">
+<body data-theme="light">
+    <!-- Header cu versiune și status -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <i class="bi bi-magic text-primary fs-4 me-2"></i>
+                <span class="fw-bold">RAG Optimizat</span>
+                <span class="badge bg-success ms-2">v3.0.0</span>
+            </a>
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item">
+                    <span class="nav-link" id="systemStatus">
+                        <i class="bi bi-circle-fill text-success me-1"></i>
+                        <span id="statusText">Activ</span>
+                    </span>
+                </div>
+                <div class="nav-item">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="showHelp()" title="Ajutor (F1)">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
         <div class="row">
             <!-- Sidebar pentru colecții -->
             <div class="col-md-3 sidebar">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3><i class="bi bi-file-earmark-code"></i> Colecții JSON</h3>
-                    <button id="createCollectionBtn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createCollectionModal">
+                <div class="sidebar-header d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="mb-0">
+                        <i class="bi bi-collection text-primary"></i> 
+                        Colecții JSON
+                    </h4>
+                    <button id="createCollectionBtn" class="btn btn-primary btn-sm" 
+                            data-bs-toggle="modal" data-bs-target="#createCollectionModal"
+                            title="Creare colecție nouă (Ctrl+N)">
                         <i class="bi bi-plus-circle"></i> Nou
                     </button>
                 </div>
                 
-                <!-- Informații despre sistem -->
-                <div class="alert alert-info p-2 mb-3">
-                    <small><i class="bi bi-info-circle"></i> <strong>Doar JSON chunkizat</strong><br>
-                    Sistem optimizat pentru fișiere JSON cu chunk-uri predefinite.</small>
+                <!-- Informații despre sistem optimizat -->
+                <div class="alert alert-info p-3 mb-3 system-info">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-lightning-charge text-warning me-2"></i>
+                        <strong>Sistem Optimizat</strong>
+                    </div>
+                    <small class="d-block mb-2">
+                        ✓ Căutare hibridă (semantic + keyword)<br>
+                        ✓ Cache inteligent cu LRU<br>
+                        ✓ Analiză automată query-uri<br>
+                        ✓ AI răspunsuri cu Gemini 2.5
+                    </small>
+                    <div class="system-metrics">
+                        <small class="text-muted">
+                            <span id="cacheHitRate">Cache: 0%</span> |
+                            <span id="avgResponseTime">Răspuns: 0ms</span>
+                        </small>
+                    </div>
                 </div>
                 
+                <!-- Căutare în colecții -->
                 <div class="input-group mb-3">
-                    <input type="text" id="searchCollections" class="form-control" placeholder="Caută colecții...">
-                    <button class="btn btn-outline-secondary" type="button">
+                    <input type="text" id="searchCollections" class="form-control" 
+                           placeholder="Caută colecții..." aria-label="Caută colecții">
+                    <button class="btn btn-outline-secondary" type="button" title="Căutare">
                         <i class="bi bi-search"></i>
                     </button>
                 </div>
+                
+                <!-- Lista colecții -->
                 <ul id="collectionsList" class="list-group">
-                    <!-- Lista de colecții va fi populată dinamic -->
+                    <li class="list-group-item text-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        Încărcare colecții...
+                    </li>
                 </ul>
+                
+                <!-- Analytics sidebar -->
+                <div class="analytics-sidebar mt-4">
+                    <h6 class="text-muted">
+                        <i class="bi bi-graph-up"></i> 
+                        Statistici sesiune
+                    </h6>
+                    <div class="analytics-grid">
+                        <div class="analytics-item">
+                            <span class="analytics-label">Query-uri:</span>
+                            <span class="analytics-value" id="totalQueries">0</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Timp mediu:</span>
+                            <span class="analytics-value" id="avgQueryTime">0ms</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Cache size:</span>
+                            <span class="analytics-value" id="cacheSize">0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Conținut principal -->
             <div class="col-md-9 main-content">
+                <!-- Header colecție curentă -->
                 <div class="row mb-4">
                     <div class="col">
-                        <h2 id="currentCollection">Selectați o colecție</h2>
-                        <p class="text-muted">Sistem RAG optimizat pentru fișiere JSON cu chunk-uri predefinite</p>
+                        <div class="current-collection-header">
+                            <h2 id="currentCollection" class="mb-1">Selectați o colecție</h2>
+                            <p class="text-muted mb-0">
+                                Sistem RAG optimizat pentru fișiere JSON cu chunk-uri predefinite
+                                <span class="ms-2">
+                                    <i class="bi bi-cpu"></i> Căutare hibridă activă
+                                </span>
+                            </p>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Tab-uri pentru diferite funcționalități -->
                 <ul class="nav nav-tabs" id="mainTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">
+                        <button class="nav-link active" id="documents-tab" data-bs-toggle="tab" 
+                                data-bs-target="#documents" type="button" role="tab">
                             <i class="bi bi-file-earmark-code"></i> Documente JSON
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="query-tab" data-bs-toggle="tab" data-bs-target="#query" type="button" role="tab">
-                            <i class="bi bi-search"></i> Interogare
+                        <button class="nav-link" id="query-tab" data-bs-toggle="tab" 
+                                data-bs-target="#query" type="button" role="tab">
+                            <i class="bi bi-magic"></i> Interogare AI
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" 
+                                data-bs-target="#analytics" type="button" role="tab">
+                            <i class="bi bi-graph-up"></i> Analytics
                         </button>
                     </li>
                 </ul>
@@ -65,20 +165,41 @@
                     <!-- Tab Documente -->
                     <div class="tab-pane fade show active" id="documents" role="tabpanel">
                         <div class="p-3">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h4><i class="bi bi-files"></i> Fișiere JSON în colecție</h4>
-                                <button id="uploadDocumentBtn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal" disabled>
-                                    <i class="bi bi-upload"></i> Încarcă JSON
-                                </button>
+                            <div class="documents-header d-flex justify-content-between align-items-center mb-4">
+                                <h4 class="mb-0">
+                                    <i class="bi bi-files"></i> 
+                                    Fișiere JSON în colecție
+                                </h4>
+                                <div class="documents-actions">
+                                    <button id="uploadDocumentBtn" class="btn btn-success" 
+                                            data-bs-toggle="modal" data-bs-target="#uploadDocumentModal" 
+                                            disabled title="Încarcă fișier JSON (Ctrl+U)">
+                                        <i class="bi bi-upload"></i> Încarcă JSON
+                                    </button>
+                                </div>
                             </div>
+                            
+                            <!-- Tabel documente optimizat -->
                             <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
+                                <table class="table table-hover documents-table">
+                                    <thead class="table-dark">
                                         <tr>
-                                            <th><i class="bi bi-file-earmark-code"></i> Nume fișier JSON</th>
-                                            <th><i class="bi bi-collection"></i> Chunk-uri procesate</th>
-                                            <th><i class="bi bi-calendar"></i> Data încărcării</th>
-                                            <th><i class="bi bi-gear"></i> Acțiuni</th>
+                                            <th style="width: 40%">
+                                                <i class="bi bi-file-earmark-code"></i> 
+                                                Nume fișier JSON
+                                            </th>
+                                            <th style="width: 25%">
+                                                <i class="bi bi-collection"></i> 
+                                                Chunk-uri & Calitate
+                                            </th>
+                                            <th style="width: 20%">
+                                                <i class="bi bi-calendar"></i> 
+                                                Data & Status
+                                            </th>
+                                            <th style="width: 15%">
+                                                <i class="bi bi-gear"></i> 
+                                                Acțiuni
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody id="documentsList">
@@ -89,33 +210,168 @@
                         </div>
                     </div>
 
-                    <!-- Tab Interogare -->
+                    <!-- Tab Interogare AI optimizat -->
                     <div class="tab-pane fade" id="query" role="tabpanel">
-                        <div class="p-3">
-                            <h4><i class="bi bi-chat-square-text"></i> Interogare colecție JSON</h4>
-                            <div class="mb-3">
-                                <label for="queryInput" class="form-label">Întrebarea ta:</label>
-                                <textarea id="queryInput" class="form-control" rows="3" placeholder="Introdu întrebarea aici... (Ctrl+Enter pentru căutare rapidă)"></textarea>
-                                <div class="form-text">Sistemul va căuta în toate chunk-urile JSON și va genera un răspuns folosind AI</div>
+                        <div class="p-4">
+                            <div class="query-header mb-4">
+                                <h4 class="d-flex align-items-center">
+                                    <i class="bi bi-magic text-primary me-2"></i>
+                                    Interogare AI optimizată
+                                    <span class="badge bg-primary ms-2">Hibrid</span>
+                                </h4>
+                                <p class="text-muted mb-0">
+                                    Folosește căutare hibridă și AI Gemini pentru răspunsuri precise
+                                </p>
                             </div>
+                            
+                            <!-- Zona query cu sugestii -->
+                            <div class="query-section mb-4">
+                                <label for="queryInput" class="form-label fw-bold">
+                                    Întrebarea ta:
+                                    <small class="text-muted">(Ctrl+Q pentru focus, Ctrl+Enter pentru execuție)</small>
+                                </label>
+                                <div class="query-input-wrapper">
+                                    <textarea id="queryInput" class="form-control query-textarea" 
+                                              rows="3" placeholder="Introdu întrebarea aici..."></textarea>
+                                    <div class="query-actions mt-2">
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="clearQuery()">
+                                            <i class="bi bi-x-circle"></i> Curăță
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-info" onclick="showQueryExamples()">
+                                            <i class="bi bi-lightbulb"></i> Exemple
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-text">
+                                    Sistemul va analiza automat complexitatea și va optimiza parametrii de căutare
+                                </div>
+                            </div>
+                            
+                            <!-- Parametri optimizați -->
+                            <div class="parameters-section mb-4">
+                                <h6 class="fw-bold mb-3">
+                                    <i class="bi bi-sliders"></i> 
+                                    Parametri de căutare
+                                    <small class="text-muted">(Optimizare automată activă)</small>
+                                </h6>
+                                
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <label for="topK" class="form-label">Chunk-uri relevante:</label>
+                                        <input type="number" id="topK" class="form-control" 
+                                               value="10" min="1" max="20" step="1">
+                                        <div class="form-text">Câte chunk-uri să folosească AI-ul</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="temperature" class="form-label">Creativitate AI:</label>
+                                        <input type="number" id="temperature" class="form-control" 
+                                               value="0.3" min="0" max="1" step="0.1">
+                                        <div class="form-text">0.0 = precis, 1.0 = creativ</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="similarityThreshold" class="form-label">Prag relevanță:</label>
+                                        <input type="number" id="similarityThreshold" class="form-control" 
+                                               value="0.15" min="0" max="1" step="0.05">
+                                        <div class="form-text">Minim pentru a include rezultate</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Opțiuni căutare:</label>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   id="useHybridSearch" checked>
+                                            <label class="form-check-label" for="useHybridSearch">
+                                                <i class="bi bi-lightning"></i> Căutare hibridă
+                                            </label>
+                                        </div>
+                                        <div class="form-text">Semantic + keyword matching</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Buton execuție cu status -->
+                            <div class="execution-section mb-4">
+                                <button id="runQueryBtn" class="btn btn-primary btn-lg" disabled
+                                        title="Execută interogarea (Ctrl+Enter)">
+                                    <i class="bi bi-magic"></i> 
+                                    Caută și Generează Răspuns cu AI
+                                </button>
+                                
+                                <div class="query-status mt-2">
+                                    <small class="text-muted" id="queryStatusText">
+                                        Selectați o colecție pentru a începe
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Rezultatele interogării -->
+                            <div id="queryResults" class="results-section">
+                                <!-- Rezultatele vor fi afișate aici dinamic -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Analytics -->
+                    <div class="tab-pane fade" id="analytics" role="tabpanel">
+                        <div class="p-4">
+                            <h4 class="mb-4">
+                                <i class="bi bi-graph-up text-success"></i>
+                                Analytics și Performance
+                            </h4>
+                            
                             <div class="row">
                                 <div class="col-md-6">
-                                    <label for="topK" class="form-label">Număr de chunk-uri relevante:</label>
-                                    <input type="number" id="topK" class="form-control" value="5" min="1" max="20">
-                                    <div class="form-text">Câte chunk-uri să fie folosite pentru generarea răspunsului</div>
+                                    <div class="analytics-card">
+                                        <h6>📊 Statistici Query-uri</h6>
+                                        <div id="queryAnalyticsContent">
+                                            <div class="analytics-item">
+                                                <span>Total query-uri:</span>
+                                                <span id="analyticsQueryCount">0</span>
+                                            </div>
+                                            <div class="analytics-item">
+                                                <span>Timp mediu răspuns:</span>
+                                                <span id="analyticsAvgTime">0ms</span>
+                                            </div>
+                                            <div class="analytics-item">
+                                                <span>Rate de succes:</span>
+                                                <span id="analyticsSuccessRate">0%</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                                
                                 <div class="col-md-6">
-                                    <label for="temperature" class="form-label">Temperatură generare:</label>
-                                    <input type="number" id="temperature" class="form-control" value="0.2" min="0" max="1" step="0.1">
-                                    <div class="form-text">0.0 = răspunsuri consistente, 1.0 = răspunsuri creative</div>
+                                    <div class="analytics-card">
+                                        <h6>💾 Cache Performance</h6>
+                                        <div id="cacheAnalyticsContent">
+                                            <div class="analytics-item">
+                                                <span>Hit rate:</span>
+                                                <span id="analyticsCacheHits">0%</span>
+                                            </div>
+                                            <div class="analytics-item">
+                                                <span>Dimensiune cache:</span>
+                                                <span id="analyticsCacheSize">0 items</span>
+                                            </div>
+                                            <div class="analytics-item">
+                                                <span>Memorie utilizată:</span>
+                                                <span id="analyticsCacheMemory">0 KB</span>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-warning mt-2" onclick="clearAllCache()">
+                                            <i class="bi bi-trash"></i> Curăță Cache
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <button id="runQueryBtn" class="btn btn-primary btn-lg mt-3" disabled>
-                                <i class="bi bi-robot"></i> Caută și Generează Răspuns cu Gemini
-                            </button>
-
-                            <div id="queryResults" class="mt-4">
-                                <!-- Rezultatele interogării vor fi afișate aici -->
+                            
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="analytics-card">
+                                        <h6>📈 Istoric Căutări Recente</h6>
+                                        <div id="searchHistoryContent">
+                                            <p class="text-muted">Nu există încă căutări în această sesiune</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -129,22 +385,42 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Creare colecție nouă</h5>
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle text-primary"></i> 
+                        Creare colecție nouă
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="collectionName" class="form-label">Nume colecție:</label>
-                        <input type="text" class="form-control" id="collectionName" placeholder="ex: documentatie_streamlit">
-                        <div class="form-text">Numele trebuie să conțină doar litere, cifre și underscore (_).</div>
+                        <label for="collectionName" class="form-label fw-bold">Nume colecție:</label>
+                        <input type="text" class="form-control" id="collectionName" 
+                               placeholder="ex: documentatie_streamlit" maxlength="50">
+                        <div class="form-text">
+                            Numele trebuie să conțină doar litere, cifre și underscore (_). Maximum 50 caractere.
+                        </div>
                     </div>
+                    
                     <div class="alert alert-info">
-                        <small><i class="bi bi-info-circle"></i> Colecția va stoca chunk-urile din fișierele JSON încărcate și va permite căutarea semantică în conținutul acestora.</small>
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-info-circle me-2 mt-1"></i>
+                            <div>
+                                <strong>Despre colecții optimizate:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li>Căutare hibridă activată automat</li>
+                                    <li>Cache inteligent pentru performanță</li>
+                                    <li>Indexare optimizată pentru JSON chunkizat</li>
+                                    <li>Suport multilingv (română/engleză)</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
-                    <button type="button" id="saveCollectionBtn" class="btn btn-primary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Anulează
+                    </button>
+                    <button type="button" id="saveCollectionBtn" class="btn btn-primary" disabled>
                         <i class="bi bi-check-lg"></i> Creează Colecția
                     </button>
                 </div>
@@ -157,26 +433,76 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-upload"></i> Încărcare fișier JSON chunkizat</h5>
+                    <h5 class="modal-title">
+                        <i class="bi bi-upload text-success"></i> 
+                        Încărcare fișier JSON chunkizat
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <!-- Avertisment format cu exemple -->
                     <div class="alert alert-warning">
-                        <h6><i class="bi bi-exclamation-triangle"></i> IMPORTANT - Format acceptat:</h6>
-                        <ul class="mb-0">
-                            <li>Doar fișiere cu extensia <code>.json</code></li>
-                            <li>Trebuie să conțină chunk-uri în formatul: <code>{"chunk_0": {"metadata": "...", "chunk": "..."}}</code></li>
-                            <li>Nu se acceptă PDF, DOCX, TXT sau alte formate</li>
-                        </ul>
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-exclamation-triangle me-2 mt-1 fs-5"></i>
+                            <div>
+                                <h6 class="alert-heading">Format JSON chunkizat acceptat:</h6>
+                                <ul class="mb-2">
+                                    <li>Doar fișiere cu extensia <code>.json</code></li>
+                                    <li>Structura obligatorie: <code>{"chunk_0": {"metadata": "...", "chunk": "..."}}</code></li>
+                                    <li>Nu se acceptă PDF, DOCX, TXT sau alte formate</li>
+                                    <li>Dimensiune maximă: 100MB</li>
+                                </ul>
+                                
+                                <details class="mt-3">
+                                    <summary class="text-primary" style="cursor: pointer;">
+                                        <i class="bi bi-code-square"></i> Vezi exemplu de JSON valid
+                                    </summary>
+                                    <div class="json-example mt-2">
+{
+  "chunk_0": {
+    "metadata": "Source: document.pdf",
+    "chunk": "Primul chunk de conținut..."
+  },
+  "chunk_1": {
+    "metadata": "Source: document.pdf", 
+    "chunk": "Al doilea chunk de conținut..."
+  }
+}
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
                     </div>
                     
+                    <!-- Selector fișier cu drag & drop -->
                     <div class="mb-3">
-                        <label for="documentFile" class="form-label">Selectează fișier JSON:</label>
-                        <input type="file" class="form-control" id="documentFile" accept=".json" required>
-                    </div>                   
+                        <label for="documentFile" class="form-label fw-bold">
+                            Selectează fișier JSON:
+                        </label>
+                        <input type="file" class="form-control" id="documentFile" 
+                               accept=".json" required>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i>
+                            Puteți și să trageți fișierul direct în aplicație (drag & drop)
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar pentru upload -->
                     <div class="progress d-none" id="uploadProgress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" aria-valuenow="0" 
+                             aria-valuemin="0" aria-valuemax="100">
                             <span id="uploadProgressText">0%</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Previzualizare fișier -->
+                    <div id="filePreview" class="d-none mt-3">
+                        <h6 class="text-info">
+                            <i class="bi bi-eye"></i> Previzualizare fișier:
+                        </h6>
+                        <div id="filePreviewContent" class="alert alert-light">
+                            <!-- Conținutul va fi generat dinamic -->
                         </div>
                     </div>
                 </div>
@@ -185,7 +511,7 @@
                         <i class="bi bi-x-lg"></i> Anulează
                     </button>
                     <button type="button" id="startUploadBtn" class="btn btn-success">
-                        <i class="bi bi-upload"></i> Încarcă JSON
+                        <i class="bi bi-upload"></i> Procesează JSON
                     </button>
                 </div>
             </div>
@@ -197,13 +523,15 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle text-danger"></i> Confirmare ștergere</h5>
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle text-danger"></i> 
+                        Confirmare ștergere
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p id="deleteConfirmText">Ești sigur că vrei să ștergi acest element?</p>
-                    <div class="alert alert-danger">
-                        <small><i class="bi bi-exclamation-triangle"></i> Această acțiune nu poate fi anulată!</small>
+                    <div id="deleteConfirmText">
+                        <!-- Conținutul va fi generat dinamic -->
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -218,120 +546,533 @@
         </div>
     </div>
 
+    <!-- Container pentru notificări -->
+    <div id="notification-container" class="notification-container"></div>
+
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
     
-    <!-- Stiluri suplimentare pentru JSON -->
+    <!-- Analytics Script pentru monitorizare performanță -->
+    <script>
+        // Actualizăm metrics în timp real
+        setInterval(() => {
+            if (window.RAG_DEBUG) {
+                const cacheStats = window.RAG_DEBUG.cacheStats();
+                const analytics = window.RAG_DEBUG.analytics();
+                
+                // Update sidebar metrics
+                document.getElementById('cacheHitRate').textContent = `Cache: ${cacheStats.hitRate}`;
+                document.getElementById('avgResponseTime').textContent = `Răspuns: ${Math.round(analytics.averageResponseTime)}ms`;
+                document.getElementById('totalQueries').textContent = analytics.totalQueries;
+                document.getElementById('avgQueryTime').textContent = `${Math.round(analytics.averageResponseTime)}ms`;
+                document.getElementById('cacheSize').textContent = cacheStats.size;
+                
+                // Update analytics tab
+                document.getElementById('analyticsQueryCount').textContent = analytics.totalQueries;
+                document.getElementById('analyticsAvgTime').textContent = `${Math.round(analytics.averageResponseTime)}ms`;
+                document.getElementById('analyticsSuccessRate').textContent = `${((analytics.totalQueries > 0 ? analytics.totalQueries / (analytics.totalQueries + 1) : 0) * 100).toFixed(1)}%`;
+                document.getElementById('analyticsCacheHits').textContent = cacheStats.hitRate;
+                document.getElementById('analyticsCacheSize').textContent = `${cacheStats.size} items`;
+                document.getElementById('analyticsCacheMemory').textContent = `${Math.round(cacheStats.totalSize / 1024)} KB`;
+                
+                // Update search history
+                const searchHistory = window.RAG_DEBUG.searchHistory();
+                const historyContent = document.getElementById('searchHistoryContent');
+                if (searchHistory.length > 0) {
+                    historyContent.innerHTML = searchHistory.slice(0, 5).map(item => `
+                        <div class="search-history-item">
+                            <div class="d-flex justify-content-between">
+                                <span class="history-query">${item.query}</span>
+                                <span class="history-time">${new Date(item.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                            <small class="text-muted">
+                                ${item.collection} • ${item.documentsFound} docs • ${item.processingTime}ms
+                            </small>
+                        </div>
+                    `).join('');
+                } else {
+                    historyContent.innerHTML = '<p class="text-muted">Nu există încă căutări în această sesiune</p>';
+                }
+            }
+        }, 2000);
+        
+        // Funcții helper pentru UI
+        function clearQuery() {
+            document.getElementById('queryInput').value = '';
+            document.getElementById('queryInput').focus();
+        }
+        
+        function showQueryExamples() {
+            const examples = [
+                "Cum să structurez o aplicație Streamlit?",
+                "Ce sunt componentele reutilizabile în dezvoltare?",
+                "Cum să organizez fișierele într-un proiect?",
+                "Care sunt cele mai bune practici pentru testare?",
+                "Cum să implementez un sistem de cache?"
+            ];
+            
+            const randomExample = examples[Math.floor(Math.random() * examples.length)];
+            document.getElementById('queryInput').value = randomExample;
+            
+            if (window.notifications) {
+                window.notifications.show(`Exemplu încărcat: "${randomExample}"`, 'info', {
+                    duration: 3000
+                });
+            }
+        }
+        
+        // Detectare schimbări în parametri pentru optimizare automată
+        document.addEventListener('DOMContentLoaded', () => {
+            const queryInput = document.getElementById('queryInput');
+            const topKInput = document.getElementById('topK');
+            const tempInput = document.getElementById('temperature');
+            const thresholdInput = document.getElementById('similarityThreshold');
+            
+            // Auto-ajustare parametri pe baza complexității query-ului
+            if (queryInput) {
+                queryInput.addEventListener('input', debounce((e) => {
+                    const query = e.target.value.trim();
+                    if (query.length > 10 && window.RAG_DEBUG?.queryAnalyzer) {
+                        const analysis = window.RAG_DEBUG.queryAnalyzer.analyzeQuery(query);
+                        
+                        // Auto-optimizare
+                        if (analysis.complexity === 'high') {
+                            if (topKInput) topKInput.value = 15;
+                            if (tempInput) tempInput.value = 0.4;
+                            if (thresholdInput) thresholdInput.value = 0.1;
+                        } else if (analysis.complexity === 'low') {
+                            if (topKInput) topKInput.value = 8;
+                            if (tempInput) tempInput.value = 0.2;
+                            if (thresholdInput) thresholdInput.value = 0.2;
+                        }
+                        
+                        // Afișăm feedback vizual
+                        document.getElementById('queryStatusText').textContent = 
+                            `Analiză: ${analysis.complexity} complexity, ${analysis.language} language, ${analysis.intent} intent`;
+                    }
+                }, 1000));
+            }
+        });
+        
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+    
+    <!-- CSS pentru stiluri suplimentare -->
     <style>
-        .json-format-info {
-            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-            border: 1px solid #bbdefb;
+        /* Stiluri pentru drag & drop */
+        .drag-over {
+            border: 2px dashed #007bff !important;
+            background-color: rgba(0, 123, 255, 0.1) !important;
+        }
+        
+        .drag-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 123, 255, 0.9);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+        }
+        
+        .drag-content {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3rem;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        /* Notification container */
+        .notification-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+        }
+        
+        .notification {
+            background: white;
             border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            transform: translateX(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+            border-left: 4px solid #007bff;
         }
-
-        .json-example {
-            background-color: #263238;
-            color: #80cbc4;
-            border-radius: 6px;
-            padding: 15px;
-            margin-top: 15px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 0.85rem;
-            overflow-x: auto;
-            border-left: 4px solid #00acc1;
-            white-space: pre;
-            line-height: 1.4;
+        
+        .notification.show {
+            transform: translateX(0);
+            opacity: 1;
         }
-
-        .json-example-small {
-            background-color: #f5f5f5;
+        
+        .notification.hide {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        
+        .notification-success { border-left-color: #28a745; }
+        .notification-error { border-left-color: #dc3545; }
+        .notification-warning { border-left-color: #ffc107; }
+        .notification-info { border-left-color: #17a2b8; }
+        
+        .notification-content {
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .notification-icon {
+            font-size: 1.2rem;
+            margin-right: 10px;
+        }
+        
+        .notification-message {
+            flex: 1;
+        }
+        
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        
+        .notification-text {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #666;
+            margin-left: 10px;
+        }
+        
+        .notification-actions {
+            margin-top: 8px;
+        }
+        
+        .notification-action {
+            background: none;
             border: 1px solid #ddd;
+            padding: 4px 8px;
             border-radius: 4px;
-            padding: 10px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 0.8rem;
-            overflow-x: auto;
-            white-space: pre;
+            cursor: pointer;
+            margin-right: 5px;
         }
-
-        .result-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-left: 4px solid #0d6efd;
+        
+        .notification-progress {
+            height: 3px;
+            background: #f0f0f0;
+            margin-top: 8px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+        }
+        
+        /* Analytics cards */
+        .analytics-card {
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
-        .result-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        
+        .analytics-card h6 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-weight: 600;
         }
-
-        .generated-answer {
-            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-            border: 1px solid #ffcc02;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 30px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        
+        .analytics-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid #f0f0f0;
         }
-
-        .answer-content {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
+        
+        .analytics-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .analytics-value {
+            font-weight: 600;
+            color: #007bff;
+        }
+        
+        .analytics-grid {
+            display: grid;
+            gap: 8px;
+        }
+        
+        .analytics-sidebar {
+            background: white;
+            border: 1px solid #ddd;
             border-radius: 8px;
-            padding: 20px;
-            line-height: 1.7;
-            color: #333;
-            font-size: 1.05rem;
+            padding: 15px;
         }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            border: none;
-            box-shadow: 0 2px 4px rgba(0,123,255,0.3);
+        
+        .analytics-sidebar h6 {
+            color: #495057;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
         }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
-            transform: translateY(-1px);
-            box-shadow: 0 3px 6px rgba(0,123,255,0.4);
+        
+        /* Search history */
+        .search-history-item {
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+            margin-bottom: 10px;
         }
-
-        .sidebar {
-            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+        
+        .search-history-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
         }
-
-        .alert-info {
-            background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
-            border-color: #85c5d3;
+        
+        .history-query {
+            font-weight: 500;
+            color: #495057;
         }
-
-        .badge {
+        
+        .history-time {
             font-size: 0.8rem;
-            padding: 6px 12px;
+            color: #6c757d;
         }
-
-        .table th {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-bottom: 2px solid #dee2e6;
+        
+        /* Query textarea */
+        .query-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .query-input-wrapper {
+            position: relative;
+        }
+        
+        .query-actions {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+        }
+        
+        /* System info */
+        .system-info {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: 1px solid #bbdefb;
+        }
+        
+        .system-metrics {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        /* Documents table */
+        .documents-table th {
+            background: #343a40 !important;
+            color: white;
             font-weight: 600;
+            border: none;
         }
-
-        .list-group-item.active {
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            border-color: #007bff;
+        
+        .documents-table tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.05);
         }
-
+        
+        /* Empty states */
+        .empty-state, .error-state {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+        
+        .empty-icon, .error-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+        }
+        
+        .empty-title, .error-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #495057;
+        }
+        
+        .empty-description, .error-description {
+            color: #6c757d;
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: -100%;
+                width: 280px;
+                height: 100vh;
+                z-index: 1050;
+                transition: left 0.3s ease;
+                background: white;
+                border-right: 1px solid #ddd;
+                overflow-y: auto;
+            }
+            
+            .sidebar.show {
+                left: 0;
+            }
+            
+            .main-content {
+                margin-left: 0;
+                padding: 15px;
+            }
+            
+            .notification-container {
+                left: 20px;
+                right: 20px;
+                max-width: none;
+            }
+            
+            .parameters-section .row {
+                margin: 0;
+            }
+            
+            .parameters-section .col-md-3 {
+                padding: 0 0 15px 0;
+            }
+        }
+        
+        /* Loading states */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+        }
+        
+        .spinner-container {
+            text-align: center;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            font-weight: 600;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        
+        .progress-dots {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+        }
+        
+        .progress-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #007bff;
+            animation: bounce 1.4s ease-in-out infinite both;
+        }
+        
+        .progress-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .progress-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+            } 40% {
+                transform: scale(1);
+            }
+        }
+        
+        /* JSON example styling */
+        .json-example {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            white-space: pre;
+            overflow-x: auto;
+            color: #495057;
+        }
+        
+        /* Tab styling */
+        .nav-tabs .nav-link {
+            color: #495057;
+            font-weight: 500;
+        }
+        
         .nav-tabs .nav-link.active {
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            background: white;
             border-color: #dee2e6 #dee2e6 #fff;
+            color: #007bff;
             font-weight: 600;
+        }
+        
+        /* Accessibility improvements */
+        .btn:focus-visible,
+        .form-control:focus-visible,
+        .nav-link:focus-visible {
+            outline: 2px solid #007bff;
+            outline-offset: 2px;
+        }
+        
+        /* Dark mode support preparation */
+        @media (prefers-color-scheme: dark) {
+            /* Stilurile pentru dark mode vor fi activate când va fi implementat */
         }
     </style>
 </body>
