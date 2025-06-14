@@ -1,0 +1,36 @@
+# Mediul virtual
+venv/
+
+# Fișiere Python compilate
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Fișiere de distribuție / packaging
+*.egg-info/
+dist/
+build/
+
+# Fișiere de mediu și configurare locală
+.env
+.env.local
+
+# Fișiere de cache
+.cache/
+.pytest_cache/
+
+# Fișiere de log
+*.log
+
+# Fișiere temporare
+*.tmp
+
+# Fișiere specifice IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Fișiere specifice sistemului de operare
+.DS_Store
+Thumbs.db

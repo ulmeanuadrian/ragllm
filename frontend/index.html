@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem RAG - Gestionare Documente</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar pentru foldere -->
+            <div class="col-md-3 sidebar">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3>foldere</h3>
+                    <button id="createCollectionBtn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createCollectionModal">
+                        <i class="bi bi-plus-circle"></i> Nou
+                    </button>
+                </div>
+                <div class="input-group mb-3">
+                    <input type="text" id="searchCollections" class="form-control" placeholder="Caută foldere...">
+                    <button class="btn btn-outline-secondary" type="button">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                <ul id="collectionsList" class="list-group">
+                    <!-- Lista de foldere va fi populată dinamic -->
+                </ul>
+            </div>
+
+            <!-- Conținut principal -->
+            <div class="col-md-9 main-content">
+                <div class="row mb-4">
+                    <div class="col">
+                        <h2 id="currentCollection">Selectați un folder</h2>
+                    </div>
+                </div>
+
+                <!-- Tab-uri pentru diferite funcționalități -->
+                <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">Documente</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="query-tab" data-bs-toggle="tab" data-bs-target="#query" type="button" role="tab">Interogare</button>
+                    </li>
+                </ul>
+
+                <!-- Conținutul tab-urilor -->
+                <div class="tab-content" id="mainTabsContent">
+                    <!-- Tab Documente -->
+                    <div class="tab-pane fade show active" id="documents" role="tabpanel">
+                        <div class="p-3">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h4>Documente în folder</h4>
+                                <button id="uploadDocumentBtn" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadDocumentModal" disabled>
+                                    <i class="bi bi-upload"></i> Încarcă document
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Nume fișier</th>
+                                            <th>Tip</th>
+                                            <th>Data încărcării</th>
+                                            <th>Acțiuni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="documentsList">
+                                        <!-- Lista de documente va fi populată dinamic -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Interogare -->
+                    <div class="tab-pane fade" id="query" role="tabpanel">
+                        <div class="p-3">
+                            <h4>Interogare folder</h4>
+                            <div class="mb-3">
+                                <label for="queryInput" class="form-label">Întrebarea ta:</label>
+                                <textarea id="queryInput" class="form-control" rows="3" placeholder="Introdu întrebarea aici..."></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="topK" class="form-label">Număr de rezultate:</label>
+                                <input type="number" id="topK" class="form-control" value="5" min="1" max="20">
+                            </div>
+                            <button id="runQueryBtn" class="btn btn-primary" disabled>
+                                <i class="bi bi-search"></i> Caută
+                            </button>
+
+                            <div id="queryResults" class="mt-4">
+                                <!-- Rezultatele interogării vor fi afișate aici -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pentru crearea unei foldere noi -->
+    <div class="modal fade" id="createCollectionModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Creare folder nouă</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="collectionName" class="form-label">Nume folder:</label>
+                        <input type="text" class="form-control" id="collectionName" placeholder="Introdu numele folder">
+                        <div class="form-text">Numele trebuie să conțină doar litere, cifre și underscore (_).</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                    <button type="button" id="saveCollectionBtn" class="btn btn-primary">Salvează</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pentru încărcarea unui document -->
+    <div class="modal fade" id="uploadDocumentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Încărcare document</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="documentFile" class="form-label">Selectează fișier:</label>
+                        <input type="file" class="form-control" id="documentFile" accept=".pdf,.docx,.txt,.json">
+                        <div class="form-text">Formate acceptate: PDF, DOCX, TXT, JSON</div>
+                    </div>
+                    <div class="progress d-none" id="uploadProgress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                    <button type="button" id="startUploadBtn" class="btn btn-primary">Încarcă</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmare pentru ștergere -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmare ștergere</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="deleteConfirmText">Ești sigur că vrei să ștergi acest element?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                    <button type="button" id="confirmDeleteBtn" class="btn btn-danger">Șterge</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

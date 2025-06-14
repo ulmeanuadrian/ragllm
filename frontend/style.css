@@ -1,0 +1,237 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    padding-top: 20px;
+}
+
+.sidebar {
+    background-color: #fff;
+    border-right: 1px solid #dee2e6;
+    padding: 20px;
+    height: calc(100vh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+}
+
+.main-content {
+    padding: 20px;
+    height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+.list-group-item {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.list-group-item:hover {
+    background-color: #f1f3f5;
+}
+
+/* Stiluri pentru notificările toast */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    min-width: 300px;
+    max-width: 400px;
+    background-color: #fff;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.toast-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+}
+
+.toast.success {
+    border-left: 4px solid #28a745;
+}
+
+.toast.error {
+    border-left: 4px solid #dc3545;
+}
+
+.toast.warning {
+    border-left: 4px solid #ffc107;
+}
+
+.close-toast {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: #6c757d;
+}
+
+.close-toast:hover {
+    color: #343a40;
+}
+
+.list-group-item.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.list-group-item .actions {
+    display: none;
+}
+
+.list-group-item:hover .actions {
+    display: block;
+}
+
+.tab-content {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-top: none;
+    position: relative;
+}
+
+/* Stiluri pentru indicatorul de încărcare */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #0d6efd;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading {
+    position: relative;
+}
+
+.tab-content {
+    border-radius: 0 0 5px 5px;
+    padding: 15px;
+    min-height: 400px;
+}
+
+/* Stiluri pentru răspunsurile generate */
+.generated-answer {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.question-title {
+    font-size: 1.1rem;
+    color: #495057;
+    margin-bottom: 10px;
+}
+
+.answer-content {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    line-height: 1.6;
+    color: #212529;
+}
+
+.result-card {
+    margin-bottom: 15px;
+    border-left: 4px solid #0d6efd;
+}
+
+.result-score {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.document-actions {
+    white-space: nowrap;
+}
+
+.progress {
+    margin-top: 15px;
+}
+
+/* Animații pentru încărcare */
+.loading {
+    position: relative;
+}
+
+.loading:after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.loading:before {
+    content: 'Se încarcă...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1001;
+    background-color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Stiluri pentru rezultatele interogării */
+.query-result {
+    padding: 15px;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+    margin-bottom: 10px;
+    border-left: 4px solid #0d6efd;
+}
+
+.query-result .content {
+    margin-bottom: 10px;
+}
+
+.query-result .metadata {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.query-result .score {
+    font-weight: bold;
+    color: #0d6efd;
+}
