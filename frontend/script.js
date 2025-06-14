@@ -1,4 +1,4 @@
-// script.js - MODIFICAT PENTRU DOAR JSON CHUNKIZAT
+// script.js - OPTIMIZAT PENTRU JSON CHUNKIZAT
 
 // Configurare API
 const API_BASE_URL = 'http://localhost:8070';
@@ -7,132 +7,230 @@ const API_BASE_URL = 'http://localhost:8070';
 let currentCollection = null;
 let documentsList = [];
 
-// Funcții utilitare
+// Cache pentru rezultate
+const resultCache = new Map();
+const MAX_CACHE_SIZE = 50;
+
+// Funcție de debouncing pentru optimizare căutări
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Funcții utilitare optimizate
 function showLoading(selector) {
     const element = document.querySelector(selector);
+    if (!element) return;
+    
     element.classList.add('loading');
     
-    // Verificăm dacă overlay-ul de încărcare există deja
-    if (!element.querySelector('.loading-overlay')) {
-        // Creăm overlay-ul de încărcare
-        const overlay = document.createElement('div');
+    let overlay = element.querySelector('.loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
         overlay.className = 'loading-overlay';
-        
-        // Adăugăm spinner-ul
-        const spinner = document.createElement('div');
-        spinner.className = 'spinner';
-        overlay.appendChild(spinner);
-        
-        // Adăugăm textul "Se încarcă..."
-        const loadingText = document.createElement('div');
-        loadingText.className = 'loading-text';
-        loadingText.textContent = 'Se procesează JSON...';
-        loadingText.style.marginLeft = '10px';
-        loadingText.style.fontWeight = 'bold';
-        overlay.appendChild(loadingText);
-        
-        // Adăugăm overlay-ul în element
+        overlay.innerHTML = `
+            <div class="spinner"></div>
+            <div class="loading-text">Se procesează JSON...</div>
+        `;
         element.appendChild(overlay);
-    } else {
-        // Dacă există deja, îl facem vizibil
-        element.querySelector('.loading-overlay').style.display = 'flex';
     }
+    
+    overlay.style.display = 'flex';
 }
 
 function hideLoading(selector) {
     const element = document.querySelector(selector);
-    element.classList.remove('loading');
+    if (!element) return;
     
-    // Ascundem overlay-ul de încărcare dacă există
+    element.classList.remove('loading');
     const overlay = element.querySelector('.loading-overlay');
     if (overlay) {
         overlay.style.display = 'none';
     }
 }
 
-function showToast(message, type = 'success') {
-    // Creăm un element de tip toast pentru notificări mai elegante
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    // Icon pentru tipul de toast
-    let icon = 'bi-check-circle';
-    if (type === 'error') icon = 'bi-exclamation-triangle';
-    if (type === 'warning') icon = 'bi-exclamation-circle';
-    
-    toast.innerHTML = `
-        <div class="toast-content">
-            <div>
-                <i class="bi ${icon}"></i>
+// Sistem de notificări optimizat
+class NotificationSystem {
+    constructor() {
+        this.container = this.createContainer();
+        this.notifications = new Set();
+    }
+
+    createContainer() {
+        const container = document.createElement('div');
+        container.id = 'notification-container';
+        container.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+        `;
+        document.body.appendChild(container);
+        return container;
+    }
+
+    show(message, type = 'success', duration = 5000) {
+        const notification = this.createNotification(message, type);
+        this.container.appendChild(notification);
+        this.notifications.add(notification);
+
+        // Animație de intrare
+        requestAnimationFrame(() => {
+            notification.style.transform = 'translateX(0)';
+            notification.style.opacity = '1';
+        });
+
+        // Auto-remove
+        setTimeout(() => {
+            this.remove(notification);
+        }, duration);
+
+        return notification;
+    }
+
+    createNotification(message, type) {
+        const notification = document.createElement('div');
+        const icons = {
+            success: 'bi-check-circle',
+            error: 'bi-exclamation-triangle',
+            warning: 'bi-exclamation-circle',
+            info: 'bi-info-circle'
+        };
+
+        const colors = {
+            success: '#28a745',
+            error: '#dc3545',
+            warning: '#ffc107',
+            info: '#17a2b8'
+        };
+
+        notification.style.cssText = `
+            background: white;
+            border-left: 4px solid ${colors[type] || colors.info};
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            padding: 16px;
+            transform: translateX(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        `;
+
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center;">
+                <i class="bi ${icons[type] || icons.info}" style="margin-right: 10px; color: ${colors[type] || colors.info};"></i>
                 <span>${message}</span>
             </div>
-            <button class="close-toast">&times;</button>
-        </div>
-    `;
-    
-    // Adăugăm toast-ul în pagina
-    document.body.appendChild(toast);
-    
-    // Afișăm toast-ul
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 10);
-    
-    // Adăugăm event listener pentru butonul de închidere
-    toast.querySelector('.close-toast').addEventListener('click', () => {
-        toast.classList.remove('show');
+            <button class="close-btn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #666;">×</button>
+        `;
+
+        notification.querySelector('.close-btn').onclick = () => this.remove(notification);
+        return notification;
+    }
+
+    remove(notification) {
+        if (!this.notifications.has(notification)) return;
+
+        notification.style.transform = 'translateX(100%)';
+        notification.style.opacity = '0';
+
         setTimeout(() => {
-            if (document.body.contains(toast)) {
-                document.body.removeChild(toast);
+            if (this.container.contains(notification)) {
+                this.container.removeChild(notification);
             }
+            this.notifications.delete(notification);
         }, 300);
-    });
-    
-    // Ascundem toast-ul automat după 5 secunde
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            if (document.body.contains(toast)) {
-                document.body.removeChild(toast);
-            }
-        }, 300);
-    }, 5000);
+    }
 }
 
-// Funcție pentru gestionarea erorilor de rețea
+const notifications = new NotificationSystem();
+
+// Wrapper pentru fetch cu gestionare avansată a erorilor
 async function fetchWithErrorHandling(url, options = {}) {
     try {
-        const response = await fetch(url, options);
-        
-        // Verificăm dacă răspunsul este ok (status 200-299)
+        // Timeout pentru cereri
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-            // Încercăm să extragem mesajul de eroare din răspuns
             let errorMessage = 'A apărut o eroare în comunicația cu serverul.';
             try {
                 const errorData = await response.json();
                 errorMessage = errorData.detail || errorData.message || errorMessage;
             } catch (e) {
-                // Dacă nu putem extrage JSON, folosim mesajul de stare HTTP
                 errorMessage = `Eroare ${response.status}: ${response.statusText}`;
             }
-            
-            // Aruncăm o eroare cu mesajul extras
             throw new Error(errorMessage);
         }
-        
-        // Dacă răspunsul este ok, returnam datele
+
         return await response.json();
     } catch (error) {
-        // Gestionăm erorile de rețea și alte erori
         console.error('Eroare de rețea:', error);
         
-        // Afișăm o notificare de eroare utilizatorului
-        showToast(error.message || 'A apărut o eroare în comunicația cu serverul. Încercați din nou.', 'error');
+        if (error.name === 'AbortError') {
+            throw new Error('Cererea a expirat. Încercați din nou.');
+        }
         
-        // Propagăm eroarea pentru a fi gestionată în funcția apelantă
+        notifications.show(error.message || 'A apărut o eroare în comunicația cu serverul.', 'error');
         throw error;
     }
 }
+
+// Cache management optimizat
+class CacheManager {
+    constructor(maxSize = MAX_CACHE_SIZE) {
+        this.cache = new Map();
+        this.maxSize = maxSize;
+    }
+
+    set(key, value) {
+        if (this.cache.size >= this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+        this.cache.set(key, {
+            value,
+            timestamp: Date.now()
+        });
+    }
+
+    get(key) {
+        const item = this.cache.get(key);
+        if (!item) return null;
+
+        // Cache expiry de 10 minute
+        if (Date.now() - item.timestamp > 600000) {
+            this.cache.delete(key);
+            return null;
+        }
+
+        return item.value;
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+}
+
+const cache = new CacheManager();
 
 // Funcții pentru gestionarea colecțiilor
 function populateCollectionsList(collections) {
@@ -140,7 +238,11 @@ function populateCollectionsList(collections) {
     collectionsList.innerHTML = '';
     
     if (collections.length === 0) {
-        collectionsList.innerHTML = '<li class="list-group-item text-center text-muted"><i class="bi bi-folder-x"></i> Nu există colecții. Creați una nouă.</li>';
+        collectionsList.innerHTML = `
+            <li class="list-group-item text-center text-muted">
+                <i class="bi bi-folder-x"></i> Nu există colecții. Creați una nouă.
+            </li>
+        `;
         return;
     }
     
@@ -148,29 +250,31 @@ function populateCollectionsList(collections) {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-center';
         li.innerHTML = `
-            <span><i class="bi bi-folder"></i> ${collection}</span>
+            <span class="collection-name">
+                <i class="bi bi-folder"></i> ${collection}
+            </span>
             <div class="actions">
-                <button class="btn btn-sm btn-danger delete-collection" data-collection="${collection}" title="Șterge colecția">
+                <button class="btn btn-sm btn-danger delete-collection" 
+                        data-collection="${collection}" 
+                        title="Șterge colecția"
+                        aria-label="Șterge colecția ${collection}">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
         `;
-        li.addEventListener('click', (e) => {
-            // Nu selectăm colecția dacă s-a făcut click pe butonul de ștergere
-            if (!e.target.closest('.delete-collection')) {
-                selectCollection(collection);
-            }
+        
+        // Event listener pentru selectarea colecției
+        li.querySelector('.collection-name').addEventListener('click', () => {
+            selectCollection(collection);
         });
-        collectionsList.appendChild(li);
-    });
-    
-    // Adaugă event listeners pentru butoanele de ștergere
-    document.querySelectorAll('.delete-collection').forEach(button => {
-        button.addEventListener('click', (e) => {
-            e.stopPropagation(); // Previne selectarea colecției
-            const collection = button.getAttribute('data-collection');
+        
+        // Event listener pentru ștergerea colecției
+        li.querySelector('.delete-collection').addEventListener('click', (e) => {
+            e.stopPropagation();
             showDeleteConfirmation('collection', collection);
         });
+        
+        collectionsList.appendChild(li);
     });
 }
 
@@ -178,12 +282,17 @@ async function loadCollections() {
     try {
         showLoading('.sidebar');
         
-        // Folosim noua funcție de gestionare a erorilor
-        const collections = await fetchWithErrorHandling(`${API_BASE_URL}/collections`);
+        const cacheKey = 'collections_list';
+        let collections = cache.get(cacheKey);
+        
+        if (!collections) {
+            collections = await fetchWithErrorHandling(`${API_BASE_URL}/collections`);
+            cache.set(cacheKey, collections);
+        }
+        
         populateCollectionsList(collections);
     } catch (error) {
-        // În caz de eroare, afișăm o listă goală
-        console.log('Serverul nu este disponibil momentan. Se afișează interfața fără colecții.');
+        console.log('Serverul nu este disponibil momentan.');
         populateCollectionsList([]);
     } finally {
         hideLoading('.sidebar');
@@ -192,45 +301,35 @@ async function loadCollections() {
 
 async function createCollection(name) {
     try {
-        // Verificăm dacă numele colecției este valid
-        if (!name || !/^[a-zA-Z0-9_]+$/.test(name)) {
-            showToast('Numele colecției trebuie să conțină doar litere, cifre și underscore (_).', 'error');
+        // Validare avansată
+        if (!name || !/^[a-zA-Z0-9_]{1,50}$/.test(name)) {
+            notifications.show('Numele colecției trebuie să conțină doar litere, cifre și underscore (_), maximum 50 caractere.', 'error');
             return false;
         }
         
-        // Verificăm dacă colecția există deja folosind fetch
-        const response = await fetch(`${API_BASE_URL}/collections`);
-        let collections = [];
-        
-        if (response.ok) {
-            collections = await response.json();
-        } else {
-            console.warn('Eroare HTTP:', response.status);
-        }
+        // Verificăm dacă colecția există deja
+        const collections = await fetchWithErrorHandling(`${API_BASE_URL}/collections`);
         
         if (collections.includes(name)) {
-            showToast(`Colecția "${name}" există deja.`, 'error');
+            notifications.show(`Colecția "${name}" există deja.`, 'error');
             return false;
         }
         
-        // Creăm colecția folosind noul endpoint
-        const createResponse = await fetch(`${API_BASE_URL}/collections/${name}`, {
+        // Creăm colecția
+        await fetchWithErrorHandling(`${API_BASE_URL}/collections/${name}`, {
             method: 'POST'
         });
         
-        if (createResponse.ok) {
-            const result = await createResponse.json();
-            showToast(`Colecția "${name}" a fost creată cu succes. Încărcați fișiere JSON pentru a o popula.`);
-            await loadCollections();
-            selectCollection(name);
-        } else {
-            showToast(`Eroare la crearea colecției "${name}".`, 'error');
-            return false;
-        }
+        notifications.show(`Colecția "${name}" a fost creată cu succes.`, 'success');
+        
+        // Invalidăm cache-ul și reîncărcăm
+        cache.clear();
+        await loadCollections();
+        selectCollection(name);
+        
         return true;
     } catch (error) {
         console.error('Eroare la crearea colecției:', error);
-        showToast('Eroare la crearea colecției. Verificați consola pentru detalii.', 'error');
         return false;
     }
 }
@@ -239,30 +338,23 @@ async function deleteCollection(name) {
     try {
         showLoading('.main-content');
         
-        // Folosim fetch direct deoarece CORS este configurat corect în backend
-        const response = await fetch(`${API_BASE_URL}/collections/${name}`, {
+        await fetchWithErrorHandling(`${API_BASE_URL}/collections/${name}`, {
             method: 'DELETE'
         });
         
-        const success = response.ok;
+        notifications.show(`Colecția "${name}" a fost ștearsă cu succes.`, 'success');
         
-        if (success) {
-            showToast(`Colecția "${name}" a fost ștearsă cu succes.`);
-            if (currentCollection === name) {
-                currentCollection = null;
-                document.getElementById('currentCollection').textContent = 'Selectați o colecție';
-                document.getElementById('uploadDocumentBtn').disabled = true;
-                document.getElementById('runQueryBtn').disabled = true;
-                document.getElementById('documentsList').innerHTML = '';
-            }
-            await loadCollections();
-            return true;
-        } else {
-            throw new Error('Eroare la ștergerea colecției');
+        if (currentCollection === name) {
+            currentCollection = null;
+            updateUI();
         }
+        
+        cache.clear();
+        await loadCollections();
+        
+        return true;
     } catch (error) {
         console.error('Eroare la ștergerea colecției:', error);
-        showToast(`Eroare la ștergerea colecției: ${error.message}`, 'error');
         return false;
     } finally {
         hideLoading('.main-content');
@@ -271,22 +363,34 @@ async function deleteCollection(name) {
 
 function selectCollection(name) {
     currentCollection = name;
-    document.getElementById('currentCollection').innerHTML = `<i class="bi bi-folder-open"></i> Colecția: ${name}`;
-    document.getElementById('uploadDocumentBtn').disabled = false;
-    document.getElementById('runQueryBtn').disabled = false;
+    updateUI();
     
-    // Marchează colecția selectată în listă
+    // Marchează colecția selectată
     document.querySelectorAll('#collectionsList .list-group-item').forEach(item => {
-        const collectionSpan = item.querySelector('span');
-        if (collectionSpan && collectionSpan.textContent.trim().includes(name)) {
+        item.classList.remove('active');
+        const collectionSpan = item.querySelector('.collection-name');
+        if (collectionSpan && collectionSpan.textContent.includes(name)) {
             item.classList.add('active');
-        } else {
-            item.classList.remove('active');
         }
     });
     
-    // Încarcă documentele din colecție
     loadDocuments(name);
+}
+
+function updateUI() {
+    const currentCollectionEl = document.getElementById('currentCollection');
+    const uploadBtn = document.getElementById('uploadDocumentBtn');
+    const queryBtn = document.getElementById('runQueryBtn');
+    
+    if (currentCollection) {
+        currentCollectionEl.innerHTML = `<i class="bi bi-folder-open"></i> Colecția: ${currentCollection}`;
+        uploadBtn.disabled = false;
+        queryBtn.disabled = false;
+    } else {
+        currentCollectionEl.textContent = 'Selectați o colecție';
+        uploadBtn.disabled = true;
+        queryBtn.disabled = true;
+    }
 }
 
 // Funcții pentru gestionarea documentelor JSON
@@ -294,121 +398,202 @@ async function loadDocuments(collectionName) {
     try {
         showLoading('.main-content');
         
-        // Folosim endpoint-ul actualizat care grupează documentele după fișierul sursă
-        const documents = await fetchWithErrorHandling(`${API_BASE_URL}/collections/${collectionName}/documents`);
+        const cacheKey = `documents_${collectionName}`;
+        let documents = cache.get(cacheKey);
         
-        const documentsList = document.getElementById('documentsList');
-        
-        if (documents.length === 0) {
-            documentsList.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-muted py-4">
-                        <i class="bi bi-file-earmark-x fs-1"></i>
-                        <div class="mt-2">Nu există fișiere JSON în această colecție.</div>
-                        <div><small>Încărcați fișiere JSON chunkizate pentru a începe.</small></div>
-                    </td>
-                </tr>
-            `;
-            return;
+        if (!documents) {
+            documents = await fetchWithErrorHandling(`${API_BASE_URL}/collections/${collectionName}/documents`);
+            cache.set(cacheKey, documents);
         }
         
-        // Salvăm documentele în variabila globală
+        displayDocuments(documents);
+        
+        // Salvăm pentru uz global
         window.documentsList = documents;
         
-        // Construim tabelul cu fișierele originale
-        let html = '';
-        documents.forEach(file => {
-            const chunkCount = file.doc_count || 0;
-            const badgeClass = chunkCount > 10 ? 'bg-success' : chunkCount > 5 ? 'bg-warning' : 'bg-info';
-            
-            html += `
-            <tr>
-                <td>
-                    <i class="bi bi-file-earmark-code text-primary"></i> 
-                    <strong>${file.source || 'Necunoscut'}</strong>
-                    <br><small class="text-muted">Fișier JSON chunkizat</small>
-                </td>
-                <td>
-                    <span class="badge ${badgeClass}">${chunkCount} chunk-uri</span>
-                    <br><small class="text-muted">Indexate pentru căutare</small>
-                </td>
-                <td>
-                    <i class="bi bi-calendar3"></i> ${file.created_at || '-'}
-                    <br><small class="text-muted">Data procesării</small>
-                </td>
-                <td>
-                    <button class="btn btn-sm btn-outline-danger delete-document" data-source="${file.source}" title="Șterge fișierul JSON">
-                        <i class="bi bi-trash"></i> Șterge
-                    </button>
-                </td>
-            </tr>
-            `;
-        });
-        
-        documentsList.innerHTML = html;
-        
-        // Adăugăm event listeners pentru butoanele de ștergere
-        document.querySelectorAll('.delete-document').forEach(button => {
-            button.addEventListener('click', () => {
-                const source = button.getAttribute('data-source');
-                showDeleteConfirmation('document', source);
-            });
-        });
     } catch (error) {
         console.error('Eroare la încărcarea documentelor:', error);
-        document.getElementById('documentsList').innerHTML = 
-            `<tr><td colspan="4" class="text-center text-danger py-4">
-                <i class="bi bi-exclamation-triangle fs-1"></i>
-                <div class="mt-2">Eroare la încărcarea documentelor.</div>
-                <div><small>Verificați consola pentru detalii.</small></div>
-            </td></tr>`;
+        displayDocumentsError();
     } finally {
         hideLoading('.main-content');
     }
 }
 
+function displayDocuments(documents) {
+    const documentsList = document.getElementById('documentsList');
+    
+    if (documents.length === 0) {
+        documentsList.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center text-muted py-4">
+                    <i class="bi bi-file-earmark-x fs-1"></i>
+                    <div class="mt-2">Nu există fișiere JSON în această colecție.</div>
+                    <div><small>Încărcați fișiere JSON chunkizate pentru a începe.</small></div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    let html = '';
+    documents.forEach(file => {
+        const chunkCount = file.doc_count || 0;
+        const badgeClass = chunkCount > 10 ? 'bg-success' : chunkCount > 5 ? 'bg-warning' : 'bg-info';
+        
+        html += `
+        <tr>
+            <td>
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-file-earmark-code text-primary me-2"></i> 
+                    <div>
+                        <strong>${escapeHtml(file.source || 'Necunoscut')}</strong>
+                        <br><small class="text-muted">Fișier JSON chunkizat</small>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <span class="badge ${badgeClass}">${chunkCount} chunk-uri</span>
+                <br><small class="text-muted">Indexate pentru căutare</small>
+            </td>
+            <td>
+                <i class="bi bi-calendar3"></i> ${escapeHtml(file.created_at || '-')}
+                <br><small class="text-muted">Data procesării</small>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger delete-document" 
+                        data-source="${escapeHtml(file.source)}" 
+                        title="Șterge fișierul JSON"
+                        aria-label="Șterge fișierul ${escapeHtml(file.source)}">
+                    <i class="bi bi-trash"></i> Șterge
+                </button>
+            </td>
+        </tr>
+        `;
+    });
+    
+    documentsList.innerHTML = html;
+    
+    // Adăugăm event listeners pentru ștergere
+    document.querySelectorAll('.delete-document').forEach(button => {
+        button.addEventListener('click', () => {
+            const source = button.getAttribute('data-source');
+            showDeleteConfirmation('document', source);
+        });
+    });
+}
+
+function displayDocumentsError() {
+    const documentsList = document.getElementById('documentsList');
+    documentsList.innerHTML = `
+        <tr>
+            <td colspan="4" class="text-center text-danger py-4">
+                <i class="bi bi-exclamation-triangle fs-1"></i>
+                <div class="mt-2">Eroare la încărcarea documentelor.</div>
+                <div><small>Verificați conexiunea la server.</small></div>
+            </td>
+        </tr>
+    `;
+}
+
+// Validare avansată fișiere JSON
+async function validateJsonFile(file) {
+    return new Promise((resolve, reject) => {
+        // Validări preliminare
+        if (!file.name.toLowerCase().endsWith('.json')) {
+            reject(new Error('Fișierul trebuie să aibă extensia .json'));
+            return;
+        }
+        
+        if (file.size > 50 * 1024 * 1024) { // 50MB
+            reject(new Error('Fișierul este prea mare. Dimensiunea maximă este 50MB.'));
+            return;
+        }
+        
+        if (file.size < 100) { // Minim 100 bytes
+            reject(new Error('Fișierul este prea mic pentru a conține JSON valid.'));
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const jsonData = JSON.parse(e.target.result);
+                
+                if (typeof jsonData !== 'object' || Array.isArray(jsonData)) {
+                    reject(new Error('JSON-ul trebuie să fie un obiect, nu o listă.'));
+                    return;
+                }
+                
+                const chunkKeys = Object.keys(jsonData).filter(key => key.startsWith('chunk_'));
+                
+                if (chunkKeys.length === 0) {
+                    reject(new Error('Nu s-au găsit chunk-uri în formatul așteptat (chunk_0, chunk_1, etc.).'));
+                    return;
+                }
+                
+                // Validăm primele chunk-uri
+                let validChunks = 0;
+                for (const key of chunkKeys.slice(0, 5)) {
+                    const chunk = jsonData[key];
+                    if (typeof chunk === 'object' && chunk.metadata && chunk.chunk) {
+                        if (typeof chunk.chunk === 'string' && chunk.chunk.trim().length >= 10) {
+                            validChunks++;
+                        }
+                    }
+                }
+                
+                if (validChunks === 0) {
+                    reject(new Error('Nu s-au găsit chunk-uri valide cu structura corectă.'));
+                    return;
+                }
+                
+                resolve({
+                    isValid: true,
+                    chunksCount: chunkKeys.length,
+                    validChunks: validChunks,
+                    sampleChunk: jsonData[chunkKeys[0]]
+                });
+                
+            } catch (error) {
+                reject(new Error(`JSON invalid: ${error.message}`));
+            }
+        };
+        
+        reader.onerror = () => reject(new Error('Eroare la citirea fișierului.'));
+        reader.readAsText(file);
+    });
+}
+
 async function uploadDocument(collectionName, file) {
     try {
         if (!file) {
-            showToast('Selectați un fișier pentru încărcare.', 'error');
+            notifications.show('Selectați un fișier pentru încărcare.', 'error');
             return false;
         }
         
-        // VERIFICARE STRICTĂ - DOAR JSON
-        if (!file.name.toLowerCase().endsWith('.json')) {
-            showToast('Sunt acceptate DOAR fișiere JSON cu extensia .json!', 'error');
-            return false;
-        }
-        
-        // Verificăm tipul MIME (opțional)
-        if (file.type && !['application/json', 'text/json', ''].includes(file.type)) {
-            showToast('Tipul fișierului trebuie să fie JSON. Verificați dacă fișierul este un JSON valid.', 'warning');
-        }
-        
-        // Verificare dimensiune fișier (max 10MB pentru JSON)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            showToast('Fișierul JSON este prea mare. Dimensiunea maximă acceptată este 10MB.', 'error');
-            return false;
-        }
+        // Validare avansată
+        const validation = await validateJsonFile(file);
+        notifications.show(
+            `Fișier valid: ${validation.chunksCount} chunk-uri detectate, ${validation.validChunks} valide.`, 
+            'success'
+        );
         
         showLoading('.main-content');
         
-        // Afișăm progress bar
+        // Progress tracking
         const progressBar = document.getElementById('uploadProgress');
         const progressText = document.getElementById('uploadProgressText');
         progressBar.classList.remove('d-none');
         
-        // Simulăm progresul pentru feedback utilizator
         let progress = 0;
         const progressInterval = setInterval(() => {
-            progress += Math.random() * 30;
+            progress += Math.random() * 20;
             if (progress > 90) progress = 90;
             progressBar.querySelector('.progress-bar').style.width = `${progress}%`;
             progressText.textContent = `${Math.round(progress)}%`;
-        }, 200);
+        }, 300);
         
-        // Folosim fetch direct pentru upload de fișiere
+        // Upload fișier
         const formData = new FormData();
         formData.append('file', file);
         
@@ -417,29 +602,32 @@ async function uploadDocument(collectionName, file) {
             body: formData
         });
         
-        // Completăm progress bar-ul
         clearInterval(progressInterval);
         progressBar.querySelector('.progress-bar').style.width = '100%';
         progressText.textContent = '100%';
         
-        const success = response.ok;
-        
-        if (success) {
+        if (response.ok) {
             const result = await response.json();
-            const chunksCount = result.chunks_count || 'multiple';
-            showToast(`Fișierul JSON "${file.name}" a fost procesat cu succes! ${chunksCount} chunk-uri au fost indexate.`);
+            notifications.show(
+                `Fișierul "${file.name}" a fost procesat cu succes! ${result.chunks_count || 'Multiple'} chunk-uri indexate.`,
+                'success'
+            );
+            
+            // Invalidăm cache-ul pentru această colecție
+            cache.clear();
+            
             return true;
         } else {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || 'Eroare la încărcarea fișierului JSON');
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Eroare la încărcarea fișierului');
         }
+        
     } catch (error) {
         console.error('Eroare la încărcarea documentului:', error);
-        showToast(`Eroare la încărcarea fișierului JSON: ${error.message}`, 'error');
+        notifications.show(`Eroare la încărcarea fișierului: ${error.message}`, 'error');
         return false;
     } finally {
         hideLoading('.main-content');
-        // Ascundem progress bar-ul
         setTimeout(() => {
             document.getElementById('uploadProgress').classList.add('d-none');
         }, 1000);
@@ -450,8 +638,7 @@ async function deleteDocument(collectionName, source) {
     try {
         showLoading('.main-content');
         
-        // Folosim fetch direct deoarece CORS este configurat corect în backend
-        const response = await fetch(`${API_BASE_URL}/collections/${collectionName}/documents`, {
+        await fetchWithErrorHandling(`${API_BASE_URL}/collections/${collectionName}/documents`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
@@ -459,56 +646,61 @@ async function deleteDocument(collectionName, source) {
             body: JSON.stringify({ source: source })
         });
         
-        const success = response.ok;
+        notifications.show(`Fișierul "${source}" a fost șters cu succes.`, 'success');
         
-        if (success) {
-            showToast(`Fișierul JSON "${source}" a fost șters cu succes.`);
-            await loadDocuments(collectionName);
-            return true;
-        } else {
-            const error = await response.json().catch(() => ({}));
-            throw new Error(error.detail || 'Eroare la ștergerea fișierului JSON');
-        }
+        // Invalidăm cache-ul și reîncărcăm documentele
+        cache.clear();
+        await loadDocuments(collectionName);
+        
+        return true;
     } catch (error) {
         console.error('Eroare la ștergerea documentului:', error);
-        showToast(`Eroare la ștergerea fișierului: ${error.message}`, 'error');
         return false;
     } finally {
         hideLoading('.main-content');
     }
 }
 
-// Funcții pentru interogare și generare cu Gemini
+// Funcții pentru interogare optimizată
 async function handleQuery() {
     const queryText = document.getElementById('queryInput').value.trim();
+    const topK = parseInt(document.getElementById('topK').value) || 5;
+    const temperature = parseFloat(document.getElementById('temperature').value) || 0.2;
+    
+    // Validări
     if (!queryText) {
-        showToast('Introduceți o întrebare pentru interogare.', 'error');
+        notifications.show('Introduceți o întrebare pentru interogare.', 'error');
         return;
     }
     
     if (!currentCollection) {
-        showToast('Selectați o colecție pentru interogare.', 'error');
+        notifications.show('Selectați o colecție pentru interogare.', 'error');
         return;
     }
     
-    const topK = parseInt(document.getElementById('topK').value) || 5;
-    const temperature = parseFloat(document.getElementById('temperature').value) || 0.2;
-    
-    // Validăm parametrii
     if (topK < 1 || topK > 20) {
-        showToast('Numărul de chunk-uri trebuie să fie între 1 și 20.', 'warning');
+        notifications.show('Numărul de chunk-uri trebuie să fie între 1 și 20.', 'warning');
         return;
     }
     
     if (temperature < 0 || temperature > 1) {
-        showToast('Temperatura trebuie să fie între 0 și 1.', 'warning');
+        notifications.show('Temperatura trebuie să fie între 0 și 1.', 'warning');
+        return;
+    }
+    
+    // Verificăm cache-ul
+    const cacheKey = `query_${currentCollection}_${queryText}_${topK}_${temperature}`;
+    let cachedResult = cache.get(cacheKey);
+    
+    if (cachedResult) {
+        displayGeneratedResults(cachedResult, queryText);
+        notifications.show('Rezultat din cache - răspuns instant!', 'info');
         return;
     }
     
     showLoading('#query');
     
     try {
-        // Afișăm un mesaj că se procesează interogarea
         const resultsContainer = document.getElementById('queryResults');
         resultsContainer.innerHTML = `
             <div class="alert alert-info">
@@ -522,49 +714,31 @@ async function handleQuery() {
             </div>
         `;
         
-        // Generăm răspunsul direct cu Gemini
-        try {
-            const response = await fetch(`${API_BASE_URL}/collections/${currentCollection}/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    query: queryText,
-                    temperature: temperature,
-                    top_k_docs: topK
-                })
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                displayGeneratedResults(data, queryText);
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Eroare la generarea răspunsului');
-            }
-        } catch (genError) {
-            console.error('Eroare la generarea răspunsului:', genError);
-            showToast(`Eroare la generarea răspunsului: ${genError.message}`, 'error');
-            
-            // Afișăm mesaj de eroare în containerul de rezultate
-            resultsContainer.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle"></i> 
-                    <strong>Eroare la generarea răspunsului</strong><br>
-                    <small>${genError.message}</small>
-                </div>
-            `;
-        }
+        const response = await fetchWithErrorHandling(`${API_BASE_URL}/collections/${currentCollection}/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: queryText,
+                temperature: temperature,
+                top_k_docs: topK
+            })
+        });
+        
+        // Salvăm în cache
+        cache.set(cacheKey, response);
+        
+        displayGeneratedResults(response, queryText);
+        
     } catch (error) {
         console.error('Eroare la procesarea interogării:', error);
-        showToast('Eroare la procesarea interogării. Verificați consola pentru detalii.', 'error');
-        
-        // Resetăm containerul de rezultate
         const resultsContainer = document.getElementById('queryResults');
         resultsContainer.innerHTML = `
             <div class="alert alert-danger">
-                <i class="bi bi-bug"></i> A apărut o eroare la procesarea interogării.
+                <i class="bi bi-exclamation-triangle"></i> 
+                <strong>Eroare la procesarea interogării</strong><br>
+                <small>${error.message}</small>
             </div>
         `;
     } finally {
@@ -576,90 +750,67 @@ function displayGeneratedResults(data, queryText) {
     const resultsContainer = document.getElementById('queryResults');
     resultsContainer.innerHTML = '';
     
-    // Verificăm dacă avem un răspuns generat
     if (!data || !data.answer) {
-        const noResults = document.createElement('div');
-        noResults.className = 'alert alert-warning';
-        noResults.innerHTML = `
-            <i class="bi bi-exclamation-circle"></i> 
-            <strong>Nu s-a putut genera un răspuns</strong><br>
-            <small>Nu s-au găsit informații relevante pentru această interogare în chunk-urile JSON.</small>
+        resultsContainer.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-circle"></i> 
+                <strong>Nu s-a putut genera un răspuns</strong><br>
+                <small>Nu s-au găsit informații relevante pentru această interogare.</small>
+            </div>
         `;
-        resultsContainer.appendChild(noResults);
         
-        // Afișăm documentele dacă sunt disponibile
         if (data && data.documents && data.documents.length > 0) {
-            displayQueryResults(data.documents);
+            displayQueryResults(data.documents, true);
         }
         return;
     }
     
-    // Creăm containerul pentru răspunsul generat
+    // Container pentru răspunsul generat
     const answerContainer = document.createElement('div');
     answerContainer.className = 'generated-answer mb-4';
-    
-    // Adăugăm titlul și întrebarea
-    const questionTitle = document.createElement('div');
-    questionTitle.className = 'question-title';
-    questionTitle.innerHTML = `
-        <i class="bi bi-question-circle text-primary"></i> 
-        <strong>Întrebare:</strong> ${queryText}
-    `;
-    answerContainer.appendChild(questionTitle);
-    
-    // Adăugăm răspunsul generat
-    const answerContent = document.createElement('div');
-    answerContent.className = 'answer-content mt-3 p-3 border rounded';
-    answerContent.innerHTML = `
-        <div class="d-flex align-items-center mb-2">
-            <i class="bi bi-robot text-success fs-5 me-2"></i> 
-            <strong>Răspuns generat de Gemini AI:</strong>
+    answerContainer.innerHTML = `
+        <div class="question-title">
+            <i class="bi bi-question-circle text-primary"></i> 
+            <strong>Întrebare:</strong> ${escapeHtml(queryText)}
         </div>
-        <div class="answer-text">${data.answer.replace(/\n/g, '<br>')}</div>
+        <div class="answer-content mt-3">
+            <div class="d-flex align-items-center mb-2">
+                <i class="bi bi-robot text-success fs-5 me-2"></i> 
+                <strong>Răspuns generat de Gemini AI:</strong>
+            </div>
+            <div class="answer-text">${formatAnswer(data.answer)}</div>
+        </div>
     `;
-    answerContainer.appendChild(answerContent);
     
-    // Adăugăm containerul de răspuns la rezultate
     resultsContainer.appendChild(answerContainer);
     
-    // Adăugăm un separator
+    // Separator
     const separator = document.createElement('hr');
     separator.className = 'my-4';
     resultsContainer.appendChild(separator);
     
-    // Adăugăm titlul pentru documente sursă
-    const sourcesTitle = document.createElement('h5');
-    sourcesTitle.className = 'mt-3 mb-3';
-    sourcesTitle.innerHTML = `
-        <i class="bi bi-file-text text-info"></i> 
-        Chunk-uri JSON utilizate pentru generarea răspunsului:
-    `;
-    resultsContainer.appendChild(sourcesTitle);
-    
-    // Afișăm documentele sursă
+    // Chunk-uri sursă
     if (data.documents && data.documents.length > 0) {
-        displayQueryResults(data.documents, true);
-    } else {
-        const noSources = document.createElement('div');
-        noSources.className = 'alert alert-info';
-        noSources.innerHTML = `
-            <i class="bi bi-info-circle"></i> 
-            Nu sunt disponibile detalii despre chunk-urile sursă utilizate.
+        const sourcesTitle = document.createElement('h5');
+        sourcesTitle.className = 'mt-3 mb-3';
+        sourcesTitle.innerHTML = `
+            <i class="bi bi-file-text text-info"></i> 
+            Chunk-uri JSON utilizate pentru generarea răspunsului:
         `;
-        resultsContainer.appendChild(noSources);
+        resultsContainer.appendChild(sourcesTitle);
+        
+        displayQueryResults(data.documents, true);
     }
 }
 
 function displayQueryResults(results, isSourceDocuments = false) {
     const resultsContainer = document.getElementById('queryResults');
     
-    // Dacă nu sunt documente sursă, curățăm containerul
     if (!isSourceDocuments) {
         resultsContainer.innerHTML = '';
     }
     
-    // Verificăm dacă avem rezultate și dacă sunt în formatul așteptat
-    if (!results || (Array.isArray(results) && results.length === 0)) {
+    if (!results || results.length === 0) {
         const noResults = document.createElement('div');
         noResults.className = 'alert alert-info';
         noResults.innerHTML = `
@@ -670,7 +821,6 @@ function displayQueryResults(results, isSourceDocuments = false) {
         return;
     }
     
-    // Convertim rezultatele în array dacă nu sunt deja
     const resultsArray = Array.isArray(results) ? results : [results];
     
     resultsArray.forEach((result, index) => {
@@ -678,45 +828,65 @@ function displayQueryResults(results, isSourceDocuments = false) {
         resultCard.className = 'result-card';
         
         const score = result.score ? (result.score * 100).toFixed(1) : 'N/A';
-        const source = result.meta && result.meta.original_source ? result.meta.original_source : 'Necunoscută';
-        const chunkId = result.meta && result.meta.chunk_id ? result.meta.chunk_id : `chunk_${index}`;
+        const source = result.meta?.original_source || 'Necunoscută';
+        const chunkId = result.meta?.chunk_id || `chunk_${index}`;
         const matchType = result.match_type || 'semantic';
         
-        // Icon și culoare în funcție de tipul de potrivire
-        let matchIcon = 'bi-search';
-        let matchColor = 'text-info';
-        if (matchType === 'exact') {
-            matchIcon = 'bi-bullseye';
-            matchColor = 'text-success';
-        } else if (matchType === 'keyword') {
-            matchIcon = 'bi-key';
-            matchColor = 'text-warning';
-        }
+        const matchTypeConfig = {
+            exact: { icon: 'bi-bullseye', color: 'text-success', label: 'Potrivire exactă' },
+            keyword: { icon: 'bi-key', color: 'text-warning', label: 'Cuvinte cheie' },
+            semantic: { icon: 'bi-search', color: 'text-info', label: 'Semantică' }
+        };
+        
+        const config = matchTypeConfig[matchType] || matchTypeConfig.semantic;
         
         resultCard.innerHTML = `
-            <div class="result-header">
+            <div class="result-header d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center">
                     <i class="bi bi-file-earmark-code text-primary me-2"></i>
-                    <span class="result-number fw-bold">${chunkId}</span>
-                    <span class="ms-2 badge bg-secondary">${matchType}</span>
+                    <span class="result-number fw-bold">${escapeHtml(chunkId)}</span>
+                    <span class="ms-2 badge bg-secondary">${config.label}</span>
                 </div>
                 <div class="d-flex align-items-center">
-                    <i class="bi ${matchIcon} ${matchColor} me-1"></i>
+                    <i class="bi ${config.icon} ${config.color} me-1"></i>
                     <span class="result-score">Relevanță: ${score}%</span>
                 </div>
             </div>
             <div class="result-content mt-3">
-                <p class="mb-0">${result.content}</p>
+                <p class="mb-0">${formatContent(result.content)}</p>
             </div>
             <div class="result-meta mt-3 pt-2 border-top">
                 <small class="text-muted">
-                    <i class="bi bi-file-text"></i> <strong>Sursă:</strong> ${source}
+                    <i class="bi bi-file-text"></i> <strong>Sursă:</strong> ${escapeHtml(source)}
                 </small>
             </div>
         `;
         
         resultsContainer.appendChild(resultCard);
     });
+}
+
+// Funcții helper pentru formatare și siguranță
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function formatAnswer(answer) {
+    return escapeHtml(answer)
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+        .replace(/^/, '<p>')
+        .replace(/$/, '</p>');
+}
+
+function formatContent(content) {
+    const escaped = escapeHtml(content);
+    if (escaped.length > 500) {
+        return escaped.substring(0, 500) + '...';
+    }
+    return escaped;
 }
 
 // Funcție pentru confirmarea ștergerii
@@ -727,7 +897,7 @@ function showDeleteConfirmation(type, name) {
     
     if (type === 'collection') {
         confirmText.innerHTML = `
-            Ești sigur că vrei să ștergi colecția <strong>"${name}"</strong>?<br>
+            Ești sigur că vrei să ștergi colecția <strong>"${escapeHtml(name)}"</strong>?<br>
             <small class="text-muted">Toate fișierele JSON și chunk-urile din această colecție vor fi șterse definitiv.</small>
         `;
         confirmBtn.onclick = async () => {
@@ -736,7 +906,7 @@ function showDeleteConfirmation(type, name) {
         };
     } else if (type === 'document') {
         confirmText.innerHTML = `
-            Ești sigur că vrei să ștergi fișierul JSON <strong>"${name}"</strong> din colecția <strong>"${currentCollection}"</strong>?<br>
+            Ești sigur că vrei să ștergi fișierul JSON <strong>"${escapeHtml(name)}"</strong> din colecția <strong>"${escapeHtml(currentCollection)}"</strong>?<br>
             <small class="text-muted">Toate chunk-urile din acest fișier vor fi șterse definitiv.</small>
         `;
         confirmBtn.onclick = async () => {
@@ -748,55 +918,176 @@ function showDeleteConfirmation(type, name) {
     modal.show();
 }
 
-// Funcție de validare pentru fișiere JSON înainte de upload
-function validateJsonFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const jsonData = JSON.parse(e.target.result);
-                
-                // Verificăm dacă JSON-ul conține chunk-uri
-                const chunkKeys = Object.keys(jsonData).filter(key => key.startsWith('chunk_'));
-                
-                if (chunkKeys.length === 0) {
-                    reject(new Error('Fișierul JSON nu conține chunk-uri în formatul așteptat. Cheile trebuie să înceapă cu "chunk_".'));
-                    return;
-                }
-                
-                // Verificăm structura primului chunk
-                const firstChunk = jsonData[chunkKeys[0]];
-                if (!firstChunk || typeof firstChunk !== 'object') {
-                    reject(new Error('Chunk-urile trebuie să fie obiecte JSON.'));
-                    return;
-                }
-                
-                if (!firstChunk.hasOwnProperty('metadata') || !firstChunk.hasOwnProperty('chunk')) {
-                    reject(new Error('Fiecare chunk trebuie să conțină câmpurile "metadata" și "chunk".'));
-                    return;
-                }
-                
-                resolve({
-                    isValid: true,
-                    chunksCount: chunkKeys.length,
-                    sampleChunk: firstChunk
-                });
-            } catch (error) {
-                reject(new Error(`Fișierul nu este un JSON valid: ${error.message}`));
+// Funcții pentru căutarea în colecții cu debouncing
+const searchCollections = debounce((searchTerm) => {
+    const items = document.querySelectorAll('#collectionsList .list-group-item');
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        const isVisible = text.includes(searchTerm.toLowerCase());
+        item.style.display = isVisible ? '' : 'none';
+    });
+}, 300);
+
+// Funcții avansate pentru gestionarea fișierelor
+function getFileInfo(file) {
+    return {
+        name: file.name,
+        size: file.size,
+        sizeFormatted: formatFileSize(file.size),
+        type: file.type,
+        lastModified: new Date(file.lastModified).toLocaleString('ro-RO')
+    };
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Funcții pentru keyboard shortcuts
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+N pentru colecție nouă
+        if (e.ctrlKey && e.key === 'n') {
+            e.preventDefault();
+            document.getElementById('createCollectionBtn').click();
+        }
+        
+        // Ctrl+U pentru upload
+        if (e.ctrlKey && e.key === 'u' && currentCollection) {
+            e.preventDefault();
+            document.getElementById('uploadDocumentBtn').click();
+        }
+        
+        // Ctrl+Q pentru focus pe query input
+        if (e.ctrlKey && e.key === 'q') {
+            e.preventDefault();
+            document.getElementById('queryInput').focus();
+        }
+        
+        // Escape pentru închidere modale
+        if (e.key === 'Escape') {
+            const activeModal = document.querySelector('.modal.show');
+            if (activeModal) {
+                const modal = bootstrap.Modal.getInstance(activeModal);
+                if (modal) modal.hide();
             }
-        };
-        reader.onerror = () => reject(new Error('Eroare la citirea fișierului.'));
-        reader.readAsText(file);
+        }
     });
 }
 
-// Event listeners
-document.addEventListener('DOMContentLoaded', () => {
-    // Încarcă colecțiile la pornirea aplicației
-    loadCollections();
+// Funcții pentru auto-save
+function setupAutoSave() {
+    ['topK', 'temperature'].forEach(id => {
+        const element = document.getElementById(id);
+        element.addEventListener('change', () => {
+            localStorage.setItem(`rag_${id}`, element.value);
+        });
+        
+        // Restore din localStorage
+        const savedValue = localStorage.getItem(`rag_${id}`);
+        if (savedValue) {
+            element.value = savedValue;
+        }
+    });
     
-    // Event listener pentru crearea unei colecții noi
-    document.getElementById('saveCollectionBtn').addEventListener('click', async () => {
+    // Auto-save pentru query input
+    const queryInput = document.getElementById('queryInput');
+    const saveQuery = debounce((value) => {
+        if (value.trim()) {
+            localStorage.setItem('rag_last_query', value);
+        }
+    }, 1000);
+    
+    queryInput.addEventListener('input', (e) => {
+        saveQuery(e.target.value);
+    });
+    
+    // Restore ultima interogare
+    const lastQuery = localStorage.getItem('rag_last_query');
+    if (lastQuery) {
+        queryInput.value = lastQuery;
+    }
+}
+
+// Funcții pentru performance monitoring
+function setupPerformanceMonitoring() {
+    if ('performance' in window) {
+        window.addEventListener('load', () => {
+            const perfData = performance.getEntriesByType('navigation')[0];
+            const loadTime = perfData.loadEventEnd - perfData.loadEventStart;
+            console.log(`Pagina s-a încărcat în ${loadTime.toFixed(2)}ms`);
+            
+            // Raportăm dacă încărcarea este lentă
+            if (loadTime > 3000) {
+                console.warn('Încărcare lentă detectată');
+            }
+        });
+    }
+}
+
+// Funcții pentru drag & drop
+function setupDragAndDrop() {
+    const uploadArea = document.querySelector('.tab-content');
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, highlight, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, unhighlight, false);
+    });
+    
+    function highlight() {
+        uploadArea.classList.add('drag-over');
+    }
+    
+    function unhighlight() {
+        uploadArea.classList.remove('drag-over');
+    }
+    
+    uploadArea.addEventListener('drop', handleDrop, false);
+    
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0 && currentCollection) {
+            const file = files[0];
+            if (file.name.toLowerCase().endsWith('.json')) {
+                document.getElementById('documentFile').files = files;
+                notifications.show(`Fișier detectat: ${file.name}`, 'info');
+            } else {
+                notifications.show('Doar fișierele JSON sunt acceptate!', 'error');
+            }
+        }
+    }
+}
+
+// Event listeners optimizați
+document.addEventListener('DOMContentLoaded', () => {
+    // Inițializări
+    loadCollections();
+    setupKeyboardShortcuts();
+    setupAutoSave();
+    setupPerformanceMonitoring();
+    setupDragAndDrop();
+    
+    // Crearea colecțiilor
+    const saveCollectionBtn = document.getElementById('saveCollectionBtn');
+    saveCollectionBtn.addEventListener('click', async () => {
         const collectionName = document.getElementById('collectionName').value.trim();
         const success = await createCollection(collectionName);
         if (success) {
@@ -805,34 +1096,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Event listener pentru încărcarea unui document JSON - adăugăm o verificare pentru a preveni dubla înregistrare
+    // Upload documente JSON
     const startUploadBtn = document.getElementById('startUploadBtn');
-    
-    // Eliminăm eventualele event listener-uri existente pentru a preveni duplicarea
-    startUploadBtn.replaceWith(startUploadBtn.cloneNode(true));
-    
-    // Adăugăm noul event listener
-    document.getElementById('startUploadBtn').addEventListener('click', async () => {
+    startUploadBtn.addEventListener('click', async () => {
         const fileInput = document.getElementById('documentFile');
         if (!fileInput.files || fileInput.files.length === 0) {
-            showToast('Selectați un fișier JSON pentru încărcare.', 'error');
+            notifications.show('Selectați un fișier JSON pentru încărcare.', 'error');
             return;
         }
         
         if (!currentCollection) {
-            showToast('Selectați o colecție pentru încărcare.', 'error');
+            notifications.show('Selectați o colecție pentru încărcare.', 'error');
             return;
         }
         
         const file = fileInput.files[0];
         
-        // Validăm fișierul JSON înainte de upload
         try {
-            showToast('Validare format JSON...', 'info');
-            const validation = await validateJsonFile(file);
-            showToast(`Fișier JSON valid: ${validation.chunksCount} chunk-uri detectate.`, 'success');
+            await validateJsonFile(file);
         } catch (validationError) {
-            showToast(`Format JSON invalid: ${validationError.message}`, 'error');
+            notifications.show(`Format JSON invalid: ${validationError.message}`, 'error');
             return;
         }
         
@@ -844,41 +1127,108 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Event listener pentru interogare
+    // Interogare
     document.getElementById('runQueryBtn').addEventListener('click', handleQuery);
     
-    // Event listener pentru căutarea în colecții
+    // Căutare în colecții
     document.getElementById('searchCollections').addEventListener('input', (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        document.querySelectorAll('#collectionsList .list-group-item').forEach(item => {
-            const collectionText = item.textContent.toLowerCase();
-            if (collectionText.includes(searchTerm)) {
-                item.style.display = '';
-            } else {
-                item.style.display = 'none';
-            }
-        });
+        searchCollections(e.target.value);
     });
 
-    // Event listener pentru Enter în câmpul de interogare
+    // Enter pentru interogare (Ctrl+Enter)
     document.getElementById('queryInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
             handleQuery();
         }
     });
     
-    // Event listener pentru validarea input-ului de fișiere
+    // Validare fișiere la selecție
     document.getElementById('documentFile').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file && !file.name.toLowerCase().endsWith('.json')) {
-            showToast('Selectați doar fișiere JSON cu extensia .json', 'error');
-            e.target.value = ''; // Resetăm selecția
+            notifications.show('Selectați doar fișiere JSON cu extensia .json', 'error');
+            e.target.value = '';
+        } else if (file) {
+            const fileInfo = getFileInfo(file);
+            notifications.show(`Fișier selectat: ${fileInfo.name} (${fileInfo.sizeFormatted})`, 'info');
         }
     });
     
-    // Tooltip pentru butoane (opțional)
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
-    tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
+    // Validare în timp real pentru numele colecției
+    document.getElementById('collectionName').addEventListener('input', (e) => {
+        const value = e.target.value;
+        const isValid = /^[a-zA-Z0-9_]*$/.test(value);
+        const saveBtn = document.getElementById('saveCollectionBtn');
+        
+        if (value && !isValid) {
+            e.target.classList.add('is-invalid');
+            saveBtn.disabled = true;
+        } else if (value.length > 0) {
+            e.target.classList.remove('is-invalid');
+            saveBtn.disabled = false;
+        } else {
+            e.target.classList.remove('is-invalid');
+            saveBtn.disabled = true;
+        }
     });
+    
+    // Cleanup la închiderea paginii
+    window.addEventListener('beforeunload', () => {
+        cache.clear();
+    });
+    
+    // Tooltips pentru accesibilitate
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+    
+    // Service Worker pentru caching (opțional)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {
+            console.log('Service Worker nu este disponibil');
+        });
+    }
+    
+    // Detectare conexiune internet
+    window.addEventListener('online', () => {
+        notifications.show('Conexiunea la internet a fost restabilită.', 'success');
+    });
+    
+    window.addEventListener('offline', () => {
+        notifications.show('Conexiunea la internet s-a pierdut. Unele funcții pot fi indisponibile.', 'warning');
+    });
+    
+    // Gestionare schimbare tab
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', (e) => {
+            const targetTab = e.target.getAttribute('data-bs-target');
+            localStorage.setItem('rag_active_tab', targetTab);
+        });
+    });
+    
+    // Restore tab activ
+    const activeTab = localStorage.getItem('rag_active_tab');
+    if (activeTab) {
+        const tabElement = document.querySelector(`[data-bs-target="${activeTab}"]`);
+        if (tabElement) {
+            const tab = new bootstrap.Tab(tabElement);
+            tab.show();
+        }
+    }
 });
+
+// Export funcții pentru debugging
+window.RAG_DEBUG = {
+    cache,
+    notifications,
+    currentCollection: () => currentCollection,
+    clearCache: () => cache.clear(),
+    showNotification: (msg, type) => notifications.show(msg, type),
+    getFileInfo,
+    formatFileSize,
+    escapeHtml,
+    validateJsonFile
+};

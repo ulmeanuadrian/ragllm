@@ -36,9 +36,7 @@ qdrant_data/
 backend/qdrant_files/
 
 # PDF-uri și fișiere streamlit
-streamlit.pdf
-*.streamlit.pdf
-streamlit_*.pdf
+*.pdf
 *.swp
 *.swo
 

@@ -2,11 +2,12 @@ import os
 import time
 import hashlib
 import logging
+import asyncio
+from typing import List, Dict, Any, Optional, Tuple
+from collections import OrderedDict
+from functools import lru_cache
 import google.generativeai as genai
 from dotenv import load_dotenv
-from typing import List, Dict, Any, Optional, Tuple
-from pydantic import BaseModel
-from collections import OrderedDict
 
 # Configurare logger
 logger = logging.getLogger("rag_api")
@@ -24,11 +25,10 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # Singleton pentru a evita crearea mai multor instanțe ale modelului
 _gemini_model_instances = {}
 
-# Cache pentru răspunsuri pentru a evita apeluri repetate pentru aceeași interogare
-# Folosim OrderedDict pentru a păstra ordinea inserării și a putea elimina cele mai vechi intrări
-from collections import OrderedDict
+# Cache pentru răspunsuri - optimizat cu LRU
 _response_cache = OrderedDict()
-MAX_CACHE_SIZE = 100  # Limităm dimensiunea cache-ului pentru a evita consumul excesiv de memorie
+MAX_CACHE_SIZE = 100  # Limităm dimensiunea cache-ului
+
 
 class GeminiGenerator:
     def __init__(self, model_name: str = "gemini-2.5-flash"):
@@ -39,35 +39,30 @@ class GeminiGenerator:
             model_name: Numele modelului Gemini de utilizat (implicit: gemini-2.5-flash)
         """
         self.model_name = model_name
-        
-        # Folosim modelul din cache dacă există deja
-        global _gemini_model_instances
-        if model_name not in _gemini_model_instances:
-            print(f"Crearea unei noi instanțe pentru modelul {model_name}")
-            _gemini_model_instances[model_name] = genai.GenerativeModel(model_name)
-            self._is_initialized = False
-        else:
-            print(f"Folosirea instanței existente pentru modelul {model_name}")
-            self._is_initialized = True
-            
-        self.model = _gemini_model_instances[model_name]
-        
-        if not self._is_initialized:
-            self.initialize()
+        self._initialize_model()
     
-    def initialize(self):
+    def _initialize_model(self):
         """Inițializează modelul pentru a fi pregătit de utilizare."""
-        if not self._is_initialized:
+        global _gemini_model_instances
+        
+        if self.model_name not in _gemini_model_instances:
+            logger.info(f"Crearea unei noi instanțe pentru modelul {self.model_name}")
             try:
-                # Facem o interogare simplă pentru a încărca modelul
-                _ = self.model.generate_content("Testare inițializare model")
-                self._is_initialized = True
-                print(f"Modelul {self.model_name} a fost inițializat cu succes.")
+                model_instance = genai.GenerativeModel(self.model_name)
+                # Test inițializare cu o interogare simplă
+                _ = model_instance.generate_content("Test inițializare")
+                _gemini_model_instances[self.model_name] = model_instance
+                logger.info(f"Modelul {self.model_name} a fost inițializat cu succes.")
             except Exception as e:
-                print(f"Eroare la inițializarea modelului: {e}")
+                logger.error(f"Eroare la inițializarea modelului: {e}")
                 raise
+        else:
+            logger.info(f"Folosirea instanței existente pentru modelul {self.model_name}")
+            
+        self.model = _gemini_model_instances[self.model_name]
     
-    def _generate_cache_key(self, query: str, document_contents: List[str], temperature: float = 0.2) -> str:
+    @staticmethod
+    def _generate_cache_key(query: str, document_contents: List[str], temperature: float = 0.2) -> str:
         """
         Generează o cheie unică pentru cache bazată pe interogare și conținutul documentelor.
         
@@ -83,21 +78,128 @@ class GeminiGenerator:
         query_normalized = query.lower().strip()
         
         # Creăm un hash din interogare și conținutul documentelor
-        hash_input = query_normalized
+        hash_input = f"{query_normalized}|temp:{temperature}"
         
         # Adăugăm fingerprint-uri pentru conținutul documentelor
         for content in document_contents:
             # Folosim doar primele 100 de caractere pentru eficiență
             content_sample = content[:100].strip()
-            # Adăugăm un mini-hash al conținutului
             content_hash = hashlib.md5(content_sample.encode()).hexdigest()[:8]
             hash_input += f"|{content_hash}"
         
-        # Adăugăm temperatura pentru a diferenția răspunsurile generate cu temperaturi diferite
-        hash_input += f"|temp:{temperature}"
-        
         # Generăm hash-ul final
         return hashlib.md5(hash_input.encode()).hexdigest()
+    
+    @staticmethod
+    def _extract_document_contents(documents: List[Dict[str, Any]]) -> List[str]:
+        """
+        Extrage conținutul documentelor în mod optimizat.
+        
+        Args:
+            documents: Lista de documente
+        
+        Returns:
+            Lista de conținuturi ale documentelor
+        """
+        contents = []
+        for doc in documents:
+            if isinstance(doc, dict):
+                content = doc.get("content", "")
+            else:
+                content = getattr(doc, "content", "")
+            
+            if content.strip():  # Ignorăm conținutul gol
+                contents.append(content.strip())
+        
+        return contents
+    
+    @staticmethod
+    def _build_prompt(query: str, document_contents: List[str]) -> str:
+        """
+        Construiește prompt-ul pentru Gemini în mod optimizat.
+        
+        Args:
+            query: Întrebarea utilizatorului
+            document_contents: Conținuturile documentelor
+        
+        Returns:
+            Prompt-ul pentru Gemini
+        """
+        # Limităm numărul de documente pentru a evita depășirea limitei de tokeni
+        max_docs = 5
+        limited_contents = document_contents[:max_docs]
+        
+        prompt = f"""Ești un asistent AI expert care răspunde la întrebări bazate pe informațiile din documentele furnizate.
+
+ÎNTREBARE: {query}
+
+CONTEXT DIN DOCUMENTE:"""
+        
+        for i, content in enumerate(limited_contents, 1):
+            # Limităm lungimea fiecărui document
+            max_content_length = 2000
+            truncated_content = content[:max_content_length]
+            if len(content) > max_content_length:
+                truncated_content += "..."
+            
+            prompt += f"\n\nDocument {i}:\n{truncated_content}"
+        
+        prompt += f"""
+
+Instrucțiuni:
+1. Răspunde DOAR pe baza informațiilor din documentele furnizate.
+2. Dacă informația necesară nu se găsește în documente, spune clar că nu poți răspunde la întrebare bazat pe documentele disponibile.
+3. Nu inventa informații care nu sunt prezente în documente.
+4. Citează sursele documentelor relevante în răspunsul tău.
+5. Răspunde în limba română, folosind un ton profesional și clar.
+6. Structurează răspunsul în paragrafe clare și ușor de înțeles.
+
+RĂSPUNS:"""
+        
+        return prompt
+    
+    @staticmethod
+    def _add_to_cache(key: str, value: str) -> None:
+        """
+        Adaugă un răspuns în cache cu gestionare optimizată a memoriei.
+        
+        Args:
+            key: Cheia pentru cache
+            value: Valoarea de stocat (răspunsul generat)
+        """
+        global _response_cache, MAX_CACHE_SIZE
+        
+        # Dacă cache-ul a atins dimensiunea maximă, eliminăm cea mai veche intrare
+        if len(_response_cache) >= MAX_CACHE_SIZE:
+            # OrderedDict păstrează ordinea inserării, deci prima cheie este cea mai veche
+            _response_cache.popitem(last=False)  # FIFO (first in, first out)
+        
+        # Adăugăm noul răspuns în cache
+        _response_cache[key] = value
+        logger.debug(f"Răspuns adăugat în cache pentru cheia: {key[:16]}...")
+    
+    @staticmethod
+    def _get_from_cache(key: str) -> Optional[str]:
+        """
+        Obține un răspuns din cache.
+        
+        Args:
+            key: Cheia pentru cache
+            
+        Returns:
+            Răspunsul din cache sau None dacă nu există
+        """
+        global _response_cache
+        
+        if key in _response_cache:
+            # Mutăm la sfârșit pentru LRU behavior
+            value = _response_cache.pop(key)
+            _response_cache[key] = value
+            logger.debug(f"Cache hit pentru cheia: {key[:16]}...")
+            return value
+        
+        logger.debug(f"Cache miss pentru cheia: {key[:16]}...")
+        return None
     
     def generate_response(
         self, 
@@ -124,13 +226,23 @@ class GeminiGenerator:
         Returns:
             Răspunsul generat
         """
+        # Validări input
+        if not query or not query.strip():
+            logger.warning("Interogare goală primită")
+            return "Interogarea nu poate fi goală."
+        
+        if not context_docs:
+            logger.warning("Nu s-au găsit documente relevante pentru interogare", 
+                         extra={"query": query[:50]})
+            return "Nu am găsit informații relevante pentru a răspunde la această întrebare."
+        
         # Extragem conținutul documentelor - limităm la primele 5 pentru a evita depășirea limitei de tokeni
         document_contents = self._extract_document_contents(context_docs[:5])
         
-        # Verificăm dacă avem documente
         if not document_contents:
-            logger.warning("Nu s-au găsit documente relevante pentru interogare", extra={"query": query})
-            return "Nu am găsit informații relevante pentru a răspunde la această întrebare."
+            logger.warning("Documentele nu conțin conținut valid", 
+                         extra={"query": query[:50]})
+            return "Documentele furnizate nu conțin informații valide."
         
         # Generăm un hash pentru interogare și documente pentru cache
         cache_key = self._generate_cache_key(query, document_contents, temperature)
@@ -138,7 +250,7 @@ class GeminiGenerator:
         # Verificăm dacă răspunsul este în cache
         cached_response = self._get_from_cache(cache_key)
         if cached_response:
-            logger.info(f"Răspuns găsit în cache pentru interogarea", 
+            logger.info("Răspuns găsit în cache", 
                        extra={"query": query[:50], "cache_hit": True})
             return cached_response
         
@@ -146,140 +258,84 @@ class GeminiGenerator:
         prompt = self._build_prompt(query, document_contents)
         
         try:
-            # Obținem modelul Gemini
-            model = self._get_gemini_model()
-            
             # Generăm răspunsul cu măsurarea timpului
             start_time = time.time()
-            response = model.generate_content(
+            
+            generation_config = {
+                "temperature": max(0.0, min(1.0, temperature)),  # Clamp la [0,1]
+                "top_p": max(0.0, min(1.0, top_p)),
+                "top_k": max(1, min(100, top_k)),
+                "max_output_tokens": max(100, min(2048, max_output_tokens)),
+            }
+            
+            response = self.model.generate_content(
                 prompt,
-                generation_config={
-                    "temperature": temperature,
-                    "top_p": 0.95,
-                    "top_k": 40,
-                    "max_output_tokens": 1024,
-                }
+                generation_config=generation_config
             )
+            
             generation_time = time.time() - start_time
             
             # Logăm metricile de performanță
-            logger.info(f"Generare răspuns Gemini finalizată", 
+            logger.info("Generare răspuns Gemini finalizată", 
                        extra={
                            "duration": f"{generation_time:.2f}s", 
                            "duration_ms": int(generation_time * 1000),
                            "query_length": len(query),
                            "doc_count": len(context_docs),
-                           "temperature": temperature
+                           "temperature": temperature,
+                           "prompt_length": len(prompt)
                        })
             
             # Extragem textul răspunsului
-            answer = response.text
+            if not response or not response.text:
+                logger.error("Răspuns gol primit de la Gemini")
+                return "Nu am putut genera un răspuns. Încercați din nou."
+            
+            answer = response.text.strip()
+            
+            # Validăm că răspunsul nu este prea scurt
+            if len(answer) < 10:
+                logger.warning("Răspuns prea scurt generat de Gemini", 
+                             extra={"answer_length": len(answer)})
+                return "Răspunsul generat este prea scurt. Încercați să reformulați întrebarea."
             
             # Salvăm răspunsul în cache
             self._add_to_cache(cache_key, answer)
             
             return answer
+            
         except Exception as e:
-            logger.error(f"Eroare la generarea răspunsului cu Gemini", 
+            logger.error("Eroare la generarea răspunsului cu Gemini", 
                         extra={"error": str(e), "query": query[:50]})
-            return f"A apărut o eroare la generarea răspunsului: {str(e)}"
+            return f"A apărut o eroare la generarea răspunsului. Vă rugăm să încercați din nou."
     
-    def _extract_document_contents(self, documents: List[Dict[str, Any]]) -> List[str]:
+    @staticmethod
+    def clear_cache() -> int:
         """
-        Extrage conținutul documentelor.
-        
-        Args:
-            documents: Lista de documente
+        Curăță cache-ul de răspunsuri.
         
         Returns:
-            Lista de conținuturi ale documentelor
+            Numărul de intrări șterse din cache
         """
-        contents = []
-        for doc in documents:
-            if isinstance(doc, dict):
-                content = doc.get("content", "")
-            else:
-                content = getattr(doc, "content", "")
-            
-            contents.append(content)
-        
-        return contents
+        global _response_cache
+        cleared_count = len(_response_cache)
+        _response_cache.clear()
+        logger.info(f"Cache-ul Gemini a fost curățat: {cleared_count} intrări șterse")
+        return cleared_count
     
-    def _build_prompt(self, query: str, document_contents: List[str]) -> str:
+    @staticmethod
+    def get_cache_info() -> Dict[str, Any]:
         """
-        Construiește prompt-ul pentru Gemini.
-        
-        Args:
-            query: Întrebarea utilizatorului
-            document_contents: Conținuturile documentelor
+        Obține informații despre cache-ul de răspunsuri.
         
         Returns:
-            Prompt-ul pentru Gemini
-        """
-        prompt = f"""
-        Ești un asistent AI expert care răspunde la întrebări bazate pe informațiile din documentele furnizate.
-        
-        ÎNTREBARE: {query}
-        
-        CONTEXT DIN DOCUMENTE:
-        """
-        for i, content in enumerate(document_contents):
-            prompt += f"\n\nDocument {i+1}:\n{content}"
-        
-        prompt += f"""
-        
-        Instrucțiuni:
-        1. Răspunde DOAR pe baza informațiilor din documentele furnizate.
-        2. Dacă informația necesară nu se găsește în documente, spune clar că nu poți răspunde la întrebare bazat pe documentele disponibile.
-        3. Nu inventa informații care nu sunt prezente în documente.
-        4. Citează sursele documentelor relevante în răspunsul tău.
-        5. Răspunde în limba română, folosind un ton profesional și clar.
-        
-        RĂSPUNS:
-        """
-        
-        return prompt
-            
-    def _add_to_cache(self, key: str, value: str) -> None:
-        """
-        Adaugă un răspuns în cache cu limitarea dimensiunii cache-ului.
-        
-        Args:
-            key: Cheia pentru cache
-            value: Valoarea de stocat (răspunsul generat)
+            Dicționar cu informații despre cache
         """
         global _response_cache, MAX_CACHE_SIZE
         
-        # Dacă cache-ul a atins dimensiunea maximă, eliminăm cea mai veche intrare
-        if len(_response_cache) >= MAX_CACHE_SIZE:
-            # OrderedDict păstrează ordinea inserării, deci prima cheie este cea mai veche
-            _response_cache.popitem(last=False)  # last=False înseamnă FIFO (first in, first out)
-        
-        # Adăugăm noul răspuns în cache
-        _response_cache[key] = value
-    
-    def _extract_document_content(self, doc) -> tuple:
-        """
-        Extrage conținutul și metadatele dintr-un document, indiferent de format.
-        
-        Args:
-            doc: Documentul din care se extrage conținutul (dict sau Document)
-            
-        Returns:
-            Tuple conținând (conținut, sursă)
-        """
-        # Gestionăm diferite tipuri de documente în mod unificat
-        if isinstance(doc, dict):
-            content = doc.get("content", "")
-            metadata = doc.get("meta", {})
-        else:  # Presupunem că este un obiect Document din Haystack
-            content = getattr(doc, "content", "")
-            metadata = getattr(doc, "meta", {})
-            
-        # Extragem sursa din metadata
-        if isinstance(metadata, dict):
-            source = metadata.get("source", "Necunoscut")
-        else:
-            source = "Necunoscut"
-            
-        return content, source
+        return {
+            "current_size": len(_response_cache),
+            "max_size": MAX_CACHE_SIZE,
+            "keys_sample": list(_response_cache.keys())[:5],  # Primele 5 chei pentru debug
+            "memory_usage_estimate": sum(len(k) + len(v) for k, v in _response_cache.items())
+        }
