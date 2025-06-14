@@ -1,10 +1,8 @@
-# rag_api.py - VERSIUNEA PENTRU CRUD
+# rag_api.py - VERSIUNEA DOAR PENTRU JSON CHUNKIZAT
 
 import os
 import re
 import time
-import pypdf
-import docx
 import json
 import traceback
 import logging
@@ -29,16 +27,19 @@ class Document(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
     embedding: Optional[List[float]] = None
     id_hash_keys: Optional[List[str]] = None
+
 # Importuri pentru farm-haystack 1.26.4
 from haystack.preview.components.preprocessors import PreProcessor
 from haystack.document_stores.qdrant import QdrantDocumentStore
 from haystack.preview.components.retrievers import EmbeddingRetriever
 from haystack.preview.pipelines import Pipeline
+from haystack.preview.components.embedders import SentenceTransformersDocumentEmbedder, SentenceTransformersTextEmbedder
+from haystack.preview.components.writers import DocumentWriter
+from haystack.components.preprocessors import DocumentSplitter
 
 # Configurare logging structurat în format JSON
 class JSONFormatter(logging.Formatter):
     def format(self, record):
-        # Creăm un dicționar de bază cu informații standard
         log_record = {
             "timestamp": self.formatTime(record, datefmt="%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
@@ -48,9 +49,7 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno
         }
         
-        # Adăugăm toate atributele extra din LogRecord
         for key, value in record.__dict__.items():
-            # Excludem atributele standard și interne
             if key not in ["args", "exc_info", "exc_text", "msg", "message", "levelname", 
                           "levelno", "pathname", "filename", "module", "lineno", 
                           "funcName", "created", "asctime", "msecs", "relativeCreated",
@@ -65,24 +64,6 @@ handler = logging.StreamHandler()
 handler.setFormatter(JSONFormatter())
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
-
-# Inițializare modele de embedding și alte componente la nivel global
-doc_embedder = SentenceTransformersDocumentEmbedder(
-    model="sentence-transformers/all-mpnet-base-v2",
-    batch_size=32
-)
-
-text_embedder = SentenceTransformersTextEmbedder(
-    model="sentence-transformers/all-mpnet-base-v2",
-    batch_size=32
-)
-
-# Document splitter pentru fragmentarea documentelor
-doc_splitter = DocumentSplitter(
-    split_by="word",
-    split_length=100,
-    split_overlap=20
-)
 
 # Helper pentru măsurarea duratei operațiilor și logging structurat
 class TimingLogger:
@@ -109,34 +90,27 @@ class TimingLogger:
         if self.collection:
             extra["collection"] = self.collection
             
-        # Adăugăm orice câmpuri extra specificate la inițializare
         extra.update(self.extra_fields)
             
         if exc_type is not None:
-            # Dacă a apărut o excepție, o logăm ca eroare cu detalii complete
             error_details = traceback.format_exception(exc_type, exc_val, exc_tb)
             logger.error(f"{self.operation_name} eșuat în {duration:.2f}s: {exc_val}", 
                         extra={**extra, "error": str(exc_val), "traceback": error_details})
         else:
-            # Altfel, logăm ca succes cu metrici de performanță
             logger.info(f"{self.operation_name} finalizat în {duration:.2f}s", extra=extra)
 
-# Import pentru generatorul Gemini
-
-# Importăm generatorul Gemini și utilitățile
+# Importăm generatorul Gemini
 from gemini_generator import GeminiGenerator
-from utils import process_pdf_optimized, process_json_chunks
 
 # Cache pentru interogări pentru a evita procesarea repetată a acelorași întrebări
 from collections import OrderedDict
 QUERY_CACHE = OrderedDict()
-MAX_QUERY_CACHE_SIZE = 100  # Limităm dimensiunea cache-ului pentru a evita consumul excesiv de memorie
+MAX_QUERY_CACHE_SIZE = 100
 
 def get_from_query_cache(key: str):
     """Obține rezultatele din cache pentru o interogare."""
     global QUERY_CACHE
     if key in QUERY_CACHE:
-        # Mutăm intrarea la sfârșitul OrderedDict pentru a o marca ca fiind recent utilizată
         value = QUERY_CACHE.pop(key)
         QUERY_CACHE[key] = value
         logger.info("Rezultate obținute din cache", extra={"cache_key": key[:30]})
@@ -147,11 +121,9 @@ def save_to_query_cache(key: str, value: list):
     """Salvează rezultatele unei interogări în cache."""
     global QUERY_CACHE, MAX_QUERY_CACHE_SIZE
     
-    # Dacă cache-ul a atins dimensiunea maximă, eliminăm cea mai veche intrare
     if len(QUERY_CACHE) >= MAX_QUERY_CACHE_SIZE:
-        QUERY_CACHE.popitem(last=False)  # Eliminăm primul element (cel mai vechi)
+        QUERY_CACHE.popitem(last=False)
     
-    # Adăugăm noile rezultate în cache
     QUERY_CACHE[key] = value
     logger.info("Rezultate salvate în cache", extra={"cache_key": key[:30], "results_count": len(value)})
 
@@ -161,29 +133,27 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 qdrant_client = QdrantClient(url="http://localhost:6333")
 
-app = FastAPI(title="RAG API - CRUD")
+app = FastAPI(title="RAG API - Doar JSON Chunkizat")
 
 # Eveniment de startup pentru inițializarea aplicației
 @app.on_event("startup")
 def startup_event():
-    logger.info("Inițializare aplicație")
+    logger.info("Inițializare aplicație RAG pentru JSON chunkizat")
     try:
-        # Verificăm conexiunea la Qdrant
         collections_response = qdrant_client.get_collections()
         logger.info(f"Conexiune la Qdrant stabilită cu succes. Colecții disponibile: {len(collections_response.collections)}")
     except Exception as e:
         logger.error(f"Eroare la conectarea la Qdrant: {str(e)}")
-        # Continuăm totuși execuția
 
-# Configurare CORS - cu origini specifice pentru a evita erorile CORS
+# Configurare CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],  # Origini specifice
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Metode specifice
-    allow_headers=["*"],  # Permite orice header
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
     expose_headers=["Content-Type", "X-Content-Type-Options"],
-    max_age=600  # Cache pentru preflight requests (10 minute)
+    max_age=600
 )
 
 # Middleware pentru gestionarea erorilor
@@ -192,10 +162,7 @@ async def error_handling_middleware(request: Request, call_next):
     try:
         return await call_next(request)
     except Exception as e:
-        # Logare eroare server
         print(f"Eroare server: {str(e)}")
-        
-        # Returnare răspuns de eroare formatat
         return JSONResponse(
             status_code=500,
             content={
@@ -206,92 +173,129 @@ async def error_handling_middleware(request: Request, call_next):
         )
 
 # --- COMPONENTE HAYSTACK REUTILIZABILE ---
-# Folosim un model mai performant pentru embeddings (all-mpnet-base-v2 are performanțe mai bune decât all-MiniLM-L6-v2)
-# În farm-haystack 1.15.0, nu avem nevoie să inițializăm modelele global, vom folosi EmbeddingRetriever direct în funcții
-
-# În farm-haystack 1.26.4, folosim PreProcessor pentru fragmentarea documentelor
-# Inițializăm preprocessor-ul pentru fragmentare - versiune compatibilă cu farm-haystack 1.26.4
-preprocessor = PreProcessor(
-    clean_empty_lines=True,
-    clean_whitespace=True,
-    clean_header_footer=True,
-    split_by="word",
-    split_length=300,
-    split_overlap=50,
-    split_respect_sentence_boundary=True
-)
-
-# --- FUNCȚII HELPER ---
 # Dimensiunea vectorului de embedding pentru modelul all-mpnet-base-v2
-EMBEDDING_DIM = 768  # Modelul all-mpnet-base-v2 are dimensiunea 768
+EMBEDDING_DIM = 768
 
 def get_document_store(collection_name: str, recreate: bool = False) -> QdrantDocumentStore:
     """
     Obține un document store pentru o colecție specificată.
-    Gestionează automat recrearea colecției dacă dimensiunea vectorului nu se potrivește.
-    
-    Args:
-        collection_name: Numele colecției
-        recreate: Dacă trebuie recreată colecția
-    
-    Returns:
-        QdrantDocumentStore: Document store-ul pentru colecția specificată
     """
     try:
-        # Verificăm dacă colecția există deja
         collections_response = qdrant_client.get_collections()
         existing_collections = [c.name for c in collections_response.collections]
         
-        # Dacă folderul există și nu dorim să-l recreăm, verificăm dimensiunea vectorului
         if collection_name in existing_collections and not recreate:
             collection_info = qdrant_client.get_collection(collection_name)
             existing_dim = collection_info.config.params.vectors.size
             
-            # Dacă dimensiunea nu se potrivește, recreăm folderul
             if existing_dim != EMBEDDING_DIM:
                 print(f"Dimensiunea vectorului nu se potrivește: {existing_dim} vs {EMBEDDING_DIM}")
                 return get_document_store(collection_name, recreate=True)
         
-        # Inițializăm document store cu parametrii optimi
         document_store = QdrantDocumentStore(
             url="http://localhost:6333",
             index=collection_name,
             embedding_dim=EMBEDDING_DIM,
             recreate_index=recreate,
-            similarity="cosine"  # Specifiăm explicit metrica de similaritate
+            similarity="cosine"
         )
         return document_store
     except ValueError as e:
         if "vector size" in str(e) and not recreate:
             logger.warning(f"Recreare folder cu dimensiunea corectă a vectorului: {collection_name}", 
                          extra={"collection": collection_name})
-            # Recreăm folderul cu parametrul recreate_index=True
             return get_document_store(collection_name, recreate=True)
         else:
-            # Dacă e altă eroare sau am încercat deja recrearea, propagăm eroarea
             logger.error(f"Eroare la inițializarea document store: {str(e)}", 
                        extra={"collection": collection_name, "error": str(e)})
             raise
 
+def process_json_chunks(file_path: str) -> List[Dict[str, Any]]:
+    """
+    Procesează un fișier JSON care conține chunk-uri în formatul exact din streamlite.json
+    
+    Format așteptat:
+    {
+        "chunk_0": {
+            "metadata": "Source: filename.pdf",
+            "chunk": "conținutul chunk-ului..."
+        },
+        "chunk_1": {
+            "metadata": "Source: filename.pdf", 
+            "chunk": "conținutul chunk-ului..."
+        }
+    }
+    """
+    start_time = time.time()
+    chunks_data = []
+    
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            json_data = json.load(f)
+        
+        logger.info(f"JSON încărcat cu succes, verificare format...", extra={"file": file_path})
+        
+        # Verificăm dacă JSON-ul conține chunk-uri în formatul așteptat
+        chunk_count = 0
+        for key, value in json_data.items():
+            if key.startswith("chunk_") and isinstance(value, dict):
+                if "metadata" in value and "chunk" in value:
+                    chunk_count += 1
+                    
+                    # Parsăm metadatele pentru a extrage informații
+                    metadata = {
+                        "chunk_id": key,
+                        "original_source": value["metadata"],
+                        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "chunk_index": chunk_count - 1
+                    }
+                    
+                    # Adăugăm chunk-ul în lista de procesare
+                    chunks_data.append({
+                        "content": value["chunk"],
+                        "metadata": metadata,
+                        "chunk_id": key
+                    })
+        
+        if chunk_count == 0:
+            raise ValueError("Fișierul JSON nu conține chunk-uri în formatul așteptat. "
+                           "Formatul așteptat: {'chunk_0': {'metadata': '...', 'chunk': '...'}, ...}")
+        
+        logger.info(f"Fișier JSON procesat cu succes: {len(chunks_data)} chunk-uri extrase în {time.time() - start_time:.2f} secunde",
+                  extra={"file": file_path, "chunks": chunk_count, "duration": f"{time.time() - start_time:.2f}s"})
+        
+        return chunks_data
+    except json.JSONDecodeError as e:
+        logger.error(f"Eroare la parsarea JSON: {str(e)}", extra={"file": file_path})
+        raise ValueError(f"Fișierul JSON nu este valid: {str(e)}")
+    except Exception as e:
+        logger.error(f"Eroare la procesarea fișierului JSON: {str(e)}")
+        raise e
+
 # --- ENDPOINTS API PENTRU CRUD ---
 
-# CREATE: Endpoint pentru a încărca și procesa fișiere (PDF, DOCX, TXT)
 @app.post("/collections/{collection_name}/upload", tags=["CRUD"])
-async def upload_file(collection_name: str, file: UploadFile = File(...)):
+async def upload_json_file(collection_name: str, file: UploadFile = File(...)):
     """
-    Endpoint pentru încărcarea și procesarea fișierelor în foldere.
-    Acceptă formate PDF, DOCX, TXT și JSON.
-    
-    Args:
-        collection_name: Numele folder în care se încarcă fișierul
-        file: Fișierul încărcat
-    
-    Returns:
-        Informații despre procesarea fișierului
+    Endpoint pentru încărcarea și procesarea fișierelor JSON chunkizate.
+    Acceptă DOAR fișiere JSON în formatul din streamlite.json
     """
     try:
         start_time = time.time()
-        print(f"Procesare fișier: {file.filename} pentru folder: {collection_name}")
+        
+        # Verificăm dacă fișierul este JSON
+        if not file.filename.lower().endswith('.json'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Sunt acceptate DOAR fișiere JSON în format chunkizat. "
+                       "Formatul așteptat: {'chunk_0': {'metadata': '...', 'chunk': '...'}, ...}"
+            )
+        
+        # Verificăm tipul MIME
+        if file.content_type != 'application/json':
+            logger.warning(f"Tip MIME neașteptat: {file.content_type}, dar continuăm cu procesarea")
+        
+        print(f"Procesare fișier JSON chunkizat: {file.filename} pentru folder: {collection_name}")
         
         # Creăm un nume de fișier unic pentru a evita suprascrierea
         timestamp = int(time.time() * 1000)
@@ -303,187 +307,93 @@ async def upload_file(collection_name: str, file: UploadFile = File(...)):
             print(f"Dimensiune fișier: {len(content_bytes)} bytes")
             f.write(content_bytes)
 
-        content = ""
-        print(f"Tip fișier detectat: {file.content_type}")
+        logger.info("Procesare JSON chunkizat...", extra={"file": file.filename})
         
-        # Procesare în funcție de tipul fișierului
-        file_ext = file.filename.lower()
-        
-        if file_ext.endswith(".pdf"):
-            logger.info("Procesare PDF...", extra={"file": file.filename})
-            try:
-                # Procesare optimizată pentru PDF-uri mari folosind chunk-uri
-                content = process_pdf_optimized(file_path)
-            except Exception as e:
-                logger.error(f"Eroare la procesarea PDF: {str(e)}", extra={"file": file.filename})
-                raise HTTPException(status_code=400, detail=f"Eroare la procesarea PDF: {str(e)}")
-                
-        elif file_ext.endswith(".docx"):
-            logger.info("Procesare DOCX...", extra={"file": file.filename})
-            try:
-                with TimingLogger("Procesare DOCX"):
-                    doc = docx.Document(file_path)
-                    content_parts = []
-                    
-                    # Extragem text din paragrafe - folosim list comprehension pentru eficiență
-                    content_parts.extend([para.text for para in doc.paragraphs if para.text.strip()])
-                    
-                    # Extragem text din tabele - optimizăm folosind list comprehension și join
-                    for table in doc.tables:
-                        content_parts.extend([" | ".join(cell.text for cell in row.cells if cell.text.strip()) 
-                                            for row in table.rows if any(cell.text.strip() for cell in row.cells)])
-                    
-                    # Join o singură dată la final pentru eficiență
-                    content = "\n".join(content_parts)
-            except Exception as e:
-                logger.error(f"Eroare la procesarea DOCX: {str(e)}", extra={"file": file.filename})
-                raise HTTPException(status_code=400, detail=f"Eroare la procesarea DOCX: {str(e)}")
-                
-        elif file_ext.endswith(".txt"):
-            logger.info("Procesare TXT...", extra={"file": file.filename})
-            try:
-                # Folosim un context manager și încercăm mai multe encoding-uri
-                encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
-                content = None
-                
-                for encoding in encodings:
-                    try:
-                        with open(file_path, "r", encoding=encoding) as f:
-                            content = f.read()
-                        logger.info(f"Fișierul TXT decodat cu succes folosind encoding: {encoding}", 
-                                   extra={"file": file.filename, "encoding": encoding})
-                        break
-                    except UnicodeDecodeError:
-                        continue
-                
-                if content is None:
-                    raise ValueError("Nu s-a putut decoda fișierul cu niciun encoding încercat")
-                    
-            except Exception as e:
-                logger.error(f"Eroare la procesarea TXT: {str(e)}", extra={"file": file.filename})
-                raise HTTPException(status_code=400, detail=f"Eroare la procesarea TXT: {str(e)}")
-                
-        elif file_ext.endswith(".json"):
-            logger.info("Procesare JSON optimizată...", extra={"file": file.filename})
-            try:
-                with TimingLogger("Procesare JSON chunkizat", collection=collection_name, file=file.filename):
-                    # Folosim funcția optimizată pentru procesarea fișierelor JSON chunkizate
-                    chunks_data = process_json_chunks(file_path)
-                
-                if chunks_data:
-                    logger.info(f"Detectate {len(chunks_data)} chunk-uri predefinite în JSON", 
-                               extra={"chunks_count": len(chunks_data), "file": file.filename})
-                    
-                    # Creăm document store și configurăm pipeline-ul de indexare
-                    document_store = get_document_store(collection_name)
-                    
-                    # Creăm toate documentele într-o singură listă pentru procesare în batch
-                    docs_to_index = []
-                    
-                    for chunk_data in chunks_data:
-                        # Adăugăm metadate standard
-                        metadata = chunk_data["metadata"]
-                        metadata["source"] = file.filename
-                        metadata["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        # Creăm documentul
-                        doc = Document(
-                            content=chunk_data["content"],
-                            meta=metadata
-                        )
-                        docs_to_index.append(doc)
-                    
-                    # Folosim retriever-ul pentru a adăuga documentele în document store în batch - versiune compatibilă cu farm-haystack 1.26.4
-                    retriever = EmbeddingRetriever(
-                        document_store=document_store,
-                        model_name_or_path="sentence-transformers/all-MiniLM-L6-v2",
-                        device="cpu",
-                        batch_size=32  # Procesare în batch pentru performanță mai bună
-                    )
-                    
-                    # Actualizăm embedding-urile documentelor într-un singur batch
-                    logger.info(f"Generare embeddings pentru {len(docs_to_index)} documente", 
-                               extra={"docs_count": len(docs_to_index)})
-                    document_store.update_embeddings(retriever=retriever, documents=docs_to_index)
-                    
-                    # Scriem toate documentele în document store într-un singur batch
-                    document_store.write_documents(docs_to_index)
-                    
-                    logger.info(f"Au fost indexate {len(docs_to_index)} chunk-uri din JSON", 
-                               extra={"indexed_count": len(docs_to_index), "file": file.filename})
-                    
-                    # Curățăm fișierul temporar
-                    os.remove(file_path)
-                    
-                    return {
-                        "status": "success", 
-                        "message": f"Fișierul JSON a fost procesat cu succes. {len(docs_to_index)} chunk-uri au fost indexate.",
-                        "chunks_count": len(docs_to_index)
-                    }
-                else:
-                    # Dacă nu sunt chunk-uri predefinite, procesăm ca JSON normal
-                    with open(file_path, "r", encoding='utf-8') as f:
-                        json_data = json.load(f)
-                    content = json.dumps(json_data, ensure_ascii=False, indent=2)
-                    logger.info("JSON fără chunk-uri procesat ca text normal", extra={"file": file.filename})
-            except json.JSONDecodeError as je:
-                logger.error(f"Eroare la parsarea JSON: {str(je)}", extra={"file": file.filename, "error": str(je)})
-                raise HTTPException(status_code=400, detail=f"Fișierul JSON nu este valid: {str(je)}")
-            except Exception as e:
-                logger.error(f"Eroare la procesarea JSON: {str(e)}", extra={"file": file.filename, "error": str(e)})
-                raise HTTPException(status_code=400, detail=f"Eroare la procesarea JSON: {str(e)}")
-        else:
-            print(f"Tip fișier neacceptat: {file.filename}")
-            raise HTTPException(status_code=400, detail="Tip de fișier neacceptat. Folosiți PDF, DOCX, TXT, JSON.")
-        
-        # Verificăm dacă am extras conținut valid
-        if not content or len(content.strip()) < 10:
-            raise HTTPException(status_code=400, detail="Nu s-a putut extrage conținut valid din fișier")
+        try:
+            with TimingLogger("Procesare JSON chunkizat", collection=collection_name, file=file.filename):
+                # Folosim funcția optimizată pentru procesarea fișierelor JSON chunkizate
+                chunks_data = process_json_chunks(file_path)
             
-        print(f"Conținut extras, lungime: {len(content)} caractere")
-        
-        # Creăm documentul cu metadate relevante
-        doc_to_process = Document(
-            content=content, 
-            meta={
-                "source": file.filename,
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "file_size": len(content_bytes),
-                "file_type": file_ext.split(".")[-1]
+            if not chunks_data:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Fișierul JSON nu conține chunk-uri în formatul așteptat. "
+                           "Formatul așteptat: {'chunk_0': {'metadata': '...', 'chunk': '...'}, ...}"
+                )
+            
+            logger.info(f"Detectate {len(chunks_data)} chunk-uri predefinite în JSON", 
+                       extra={"chunks_count": len(chunks_data), "file": file.filename})
+            
+            # Creăm document store și configurăm pipeline-ul de indexare
+            document_store = get_document_store(collection_name)
+            
+            # Creăm toate documentele într-o singură listă pentru procesare în batch
+            docs_to_index = []
+            
+            for chunk_data in chunks_data:
+                # Adăugăm metadate suplimentare
+                metadata = chunk_data["metadata"]
+                metadata["source"] = file.filename
+                metadata["file_type"] = "json_chunked"
+                
+                # Creăm documentul
+                doc = Document(
+                    content=chunk_data["content"],
+                    meta=metadata
+                )
+                docs_to_index.append(doc)
+            
+            # Folosim retriever-ul pentru a adăuga documentele în document store în batch
+            retriever = EmbeddingRetriever(
+                document_store=document_store,
+                model_name_or_path="sentence-transformers/all-mpnet-base-v2",
+                device="cpu",
+                batch_size=32
+            )
+            
+            # Actualizăm embedding-urile documentelor într-un singur batch
+            logger.info(f"Generare embeddings pentru {len(docs_to_index)} documente", 
+                       extra={"docs_count": len(docs_to_index)})
+            document_store.update_embeddings(retriever=retriever, documents=docs_to_index)
+            
+            # Scriem toate documentele în document store într-un singur batch
+            document_store.write_documents(docs_to_index)
+            
+            logger.info(f"Au fost indexate {len(docs_to_index)} chunk-uri din JSON", 
+                       extra={"indexed_count": len(docs_to_index), "file": file.filename})
+            
+            # Curățăm fișierul temporar
+            os.remove(file_path)
+            
+            processing_time = time.time() - start_time
+            print(f"Procesare finalizată în {processing_time:.2f} secunde")
+            
+            return {
+                "status": "success", 
+                "message": f"Fișierul JSON '{file.filename}' a fost procesat cu succes. {len(docs_to_index)} chunk-uri au fost indexate.",
+                "filename": file.filename,
+                "collection": collection_name,
+                "chunks_count": len(docs_to_index),
+                "processing_time": f"{processing_time:.2f}s"
             }
-        )
-
-        # Inițializăm document store și configurăm procesarea documentelor
-        print("Inițializare document store...")
-        document_store = get_document_store(collection_name)
-        
-        print("Procesare document...")
-        # Folosim preprocessor pentru a fragmenta documentul
-        processed_docs = preprocessor.process(documents=[doc_to_process])
-        
-        print(f"Document fragmentat în {len(processed_docs)} bucăți")
-        
-        # Inițializăm retriever-ul pentru embedding - versiune compatibilă cu farm-haystack 1.26.4
-        retriever = EmbeddingRetriever(
-            document_store=document_store,
-            model_name_or_path="sentence-transformers/all-MiniLM-L6-v2",
-            device="cpu"
-        )
-        
-        # Actualizăm embedding-urile documentelor
-        document_store.update_embeddings(retriever=retriever, documents=processed_docs)
-        
-        # Scriem documentele în document store
-        document_store.write_documents(processed_docs)
-        
-        processing_time = time.time() - start_time
-        print(f"Procesare finalizată în {processing_time:.2f} secunde")
-        
-        print("Curățare fișier temporar...")
-        os.remove(file_path)
-        
-        print("Procesare finalizată cu succes!")
-        return {"status": "success", "filename": file.filename, "collection": collection_name}
+            
+        except json.JSONDecodeError as je:
+            logger.error(f"Eroare la parsarea JSON: {str(je)}", extra={"file": file.filename, "error": str(je)})
+            raise HTTPException(status_code=400, detail=f"Fișierul JSON nu este valid: {str(je)}")
+        except ValueError as ve:
+            logger.error(f"Format JSON invalid: {str(ve)}", extra={"file": file.filename})
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            logger.error(f"Eroare la procesarea JSON: {str(e)}", extra={"file": file.filename, "error": str(e)})
+            raise HTTPException(status_code=400, detail=f"Eroare la procesarea JSON: {str(e)}")
+        finally:
+            # Curățăm fișierul temporar în caz de eroare
+            if file_path.exists():
+                os.remove(file_path)
+            
+    except HTTPException:
+        # Re-ridicăm HTTPException-urile pentru a păstra status code-ul
+        raise
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
@@ -494,17 +404,8 @@ async def upload_file(collection_name: str, file: UploadFile = File(...)):
 async def query_documents(collection_name: str, query_text: str, top_k: int = 5):
     """
     Interoghează o colecție și returnează documentele relevante.
-    
-    Args:
-        collection_name: Numele colecției de interogat
-        query_text: Textul interogării
-        top_k: Numărul maxim de rezultate de returnat
-        
-    Returns:
-        Lista de documente relevante pentru interogare
     """
     try:
-        # Verificăm dacă interogarea este goală
         if not query_text.strip():
             logger.warning("Interogare goală primită", extra={"collection": collection_name})
             return []
@@ -529,10 +430,10 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
             
             # Pregătim variante ale interogării pentru căutare mai flexibilă
             query_variants = [
-                query_text,  # Original
-                query_text.lower(),  # Lowercase
-                ' '.join(query_text.lower().split()),  # Normalizat (fără spații multiple)
-                re.sub(r'[^\w\s]', '', query_text.lower())  # Fără punctuație
+                query_text,
+                query_text.lower(),
+                ' '.join(query_text.lower().split()),
+                re.sub(r'[^\w\s]', '', query_text.lower())
             ]
             
             # Căutăm potriviri exacte folosind toate variantele
@@ -542,19 +443,18 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
                 content_norm = ' '.join(content_lower.split())
                 content_clean = re.sub(r'[^\w\s]', '', content_lower)
                 
-                # Verificăm dacă oricare dintre variante se potrivește
                 for variant in query_variants:
                     if variant in content or variant in content_lower or \
                        variant in content_norm or variant in content_clean:
                         exact_matches.append({
                             "content": content,
-                            "score": 1.0,  # Scor maxim pentru potrivire exactă
+                            "score": 1.0,
                             "meta": doc.meta,
                             "id": doc.id,
                             "embedding": None,
                             "match_type": "exact"
                         })
-                        break  # Trecem la următorul document dacă am găsit o potrivire
+                        break
             
             # Dacă avem suficiente potriviri exacte, le returnăm direct
             if len(exact_matches) >= top_k:
@@ -562,23 +462,18 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
                 return exact_matches[:top_k]
             
             # 2. Căutare semantică (embeddings)
-            # Folosim retriever-ul pentru căutare semantică
             logger.info("Utilizare retriever pentru căutare semantică")
             
-            # Inițializăm retriever-ul cu document store-ul - versiune compatibilă cu farm-haystack 1.26.4
             retriever = EmbeddingRetriever(
                 document_store=document_store,
-                model_name_or_path="sentence-transformers/all-MiniLM-L6-v2",
-                top_k=top_k * 2,  # Cerem mai multe rezultate pentru a avea opțiuni
+                model_name_or_path="sentence-transformers/all-mpnet-base-v2",
+                top_k=top_k * 2,
                 device="cpu"
             )
             
-            # În versiunea nouă nu mai este nevoie de embed_queries = True
-            
-            # Obținem rezultatele direct din retriever
             semantic_results = retriever.run(query=query_text)
             
-            # Convertim rezultatele semantice în dicționare pentru a putea adăuga match_type
+            # Convertim rezultatele semantice în dicționare
             semantic_results_dicts = []
             for res in semantic_results:
                 if isinstance(res, dict):
@@ -586,12 +481,11 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
                     res_dict["match_type"] = "semantic"
                     semantic_results_dicts.append(res_dict)
                 else:
-                    # Dacă rezultatul este un Document sau alt tip de obiect
                     semantic_results_dicts.append({
                         "content": res.content if hasattr(res, "content") else str(res),
-                        "score": getattr(res, "score", 0.8),  # Scor implicit pentru rezultate semantice
+                        "score": getattr(res, "score", 0.8),
                         "meta": getattr(res, "meta", {}),
-                        "id": getattr(res, "id", f"sem_{id(res)}"),  # Generăm un ID unic dacă nu există
+                        "id": getattr(res, "id", f"sem_{id(res)}"),
                         "embedding": None,
                         "match_type": "semantic"
                     })
@@ -606,11 +500,9 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
                         'ce', 'cum', 'unde', 'cand', 'cat', 'a', 'al', 'ai', 'ale', 'o', 'un', 'una', 
                         'niste', 'acest', 'aceasta', 'aceste', 'acesti', 'sau', 'ori', 'dar', 'insa'}
             
-            # Extragem termenii semnificativi (fără stopwords)
             query_terms_raw = query_text.lower().split()
             query_terms = [term for term in query_terms_raw if term not in stopwords and len(term) > 2]
             
-            # Dacă nu avem termeni semnificativi, folosim toți termenii
             if not query_terms:
                 query_terms = query_terms_raw
             
@@ -618,22 +510,17 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
             for doc in all_docs:
                 content_lower = doc.content.lower()
                 
-                # Numărăm potrivirile pentru fiecare termen
                 matches = sum(1 for term in query_terms if term in content_lower)
                 
-                # Calculăm un scor mai sofisticat
                 if matches > 0 and len(query_terms) > 0:
-                    # Scorul de bază este proporția termenilor găsiți
                     base_score = matches / len(query_terms)
                     
-                    # Bonus pentru potriviri consecutive (fraze)
                     consecutive_bonus = 0
                     for i in range(len(query_terms) - 1):
                         if f"{query_terms[i]} {query_terms[i+1]}" in content_lower:
                             consecutive_bonus += 0.1
                     
-                    # Scorul final
-                    final_score = min(0.95, base_score + consecutive_bonus)  # Maxim 0.95 pentru a fi sub potrivirile exacte
+                    final_score = min(0.95, base_score + consecutive_bonus)
                     
                     keyword_results.append({
                         "content": doc.content,
@@ -644,27 +531,23 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
                         "match_type": "keyword"
                     })
             
-            # Sortăm rezultatele după scor
             keyword_results = sorted(keyword_results, key=lambda x: x["score"], reverse=True)[:top_k]
             
-            # Combinăm toate rezultatele (exacte, semantice și bazate pe cuvinte cheie)
+            # Combinăm toate rezultatele
             combined_results = exact_matches + semantic_results + keyword_results
             
-            # Eliminăm duplicatele (păstrăm prima apariție a fiecărui document)
+            # Eliminăm duplicatele
             seen_ids = set()
             unique_results = []
             
             for result in combined_results:
-                # Verificăm dacă result este un dicționar și are cheia 'id'
                 if isinstance(result, dict) and "id" in result:
                     if result["id"] not in seen_ids:
                         seen_ids.add(result["id"])
                         unique_results.append(result)
-                # Dacă este Document din Haystack
                 elif hasattr(result, "id"):
                     if result.id not in seen_ids:
                         seen_ids.add(result.id)
-                        # Convertim Document la dicționar pentru consistență
                         unique_results.append({
                             "content": result.content,
                             "score": getattr(result, "score", 0.0),
@@ -677,7 +560,7 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
             # Sortăm rezultatele finale după scor
             final_results = sorted(unique_results, key=lambda x: x.get("score", 0.0) if isinstance(x, dict) else 0.0, reverse=True)[:top_k]
             
-            # Salvăm rezultatul în cache pentru viitoare interogări similare
+            # Salvăm rezultatul în cache
             save_to_query_cache(cache_key, final_results)
             
             logger.info(f"Interogare finalizată, găsite {len(final_results)} rezultate")
@@ -690,13 +573,6 @@ async def query_documents(collection_name: str, query_text: str, top_k: int = 5)
 async def query_collection(collection_name: str, request: Request):
     """
     Endpoint pentru interogarea documentelor dintr-o folder.
-    
-    Args:
-        collection_name: Numele folder de interogat
-        request: Cererea cu parametrii pentru interogare
-    
-    Returns:
-        Lista de documente relevante pentru interogare
     """
     try:
         data = await request.json()
@@ -706,7 +582,6 @@ async def query_collection(collection_name: str, request: Request):
         logger.info(f"Delegare interogare către funcția reutilizabilă query_documents", 
                    extra={"collection": collection_name, "query": query_text[:30] if query_text else "", "top_k": top_k})
         
-        # Apelăm direct funcția query_documents reutilizabilă
         results = await query_documents(collection_name, query_text, top_k)
         return results
         
@@ -731,28 +606,23 @@ async def list_documents(collection_name: str):
         files_dict = {}
         
         for doc in documents:
-            # Extragem metadatele relevante
             meta = doc.meta if hasattr(doc, 'meta') else {}
             source = meta.get('source', 'Necunoscut')
             created_at = meta.get('created_at', 'Necunoscut')
             
-            # Dacă fișierul sursă nu există în dicționar, îl adăugăm
             if source not in files_dict:
                 files_dict[source] = {
                     "source": source,
                     "created_at": created_at,
                     "doc_count": 0,
-                    "doc_ids": []
+                    "doc_ids": [],
+                    "file_type": meta.get('file_type', 'json_chunked')
                 }
             
-            # Incrementăm numărul de documente pentru acest fișier
             files_dict[source]["doc_count"] += 1
             files_dict[source]["doc_ids"].append(doc.id)
         
-        # Convertăm dicționarul într-o listă pentru a o returna
         result = list(files_dict.values())
-        
-        # Sortăm rezultatul după data creării (dacă există)
         result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         
         return result
@@ -764,16 +634,9 @@ async def list_documents(collection_name: str):
 async def create_collection(collection_name: str):
     """
     Endpoint pentru crearea unei foldere noi în Qdrant.
-    
-    Args:
-        collection_name: Numele folder de creat
-    
-    Returns:
-        Informații despre rezultatul operației
     """
     try:
-        with TimingLogger("Încărcare fișier", collection=collection_name):
-            # Verificăm dacă colecția există deja
+        with TimingLogger("Creare colecție", collection=collection_name):
             collections_response = qdrant_client.get_collections()
             existing_collections = [c.name for c in collections_response.collections]
             
@@ -783,7 +646,7 @@ async def create_collection(collection_name: str):
                     collection_name=collection_name,
                     vectors_config={
                         "content": {
-                            "size": 768,  # Dimensiunea vectorului pentru modelul all-mpnet-base-v2
+                            "size": 768,
                             "distance": "Cosine"
                         }
                     }
@@ -804,10 +667,9 @@ async def delete_documents_by_source(collection_name: str, request: Request):
         raise HTTPException(status_code=400, detail="Trebuie specificat un 'source'.")
     
     try:
-        # Obținem document store
         document_store = get_document_store(collection_name)
         
-        # Mai întâi trebuie să găsim toate documentele cu sursa specificată
+        # Găsim toate documentele cu sursa specificată
         documents = document_store.filter_documents()
         
         # Filtrăm documentele care au sursa specificată
@@ -827,26 +689,16 @@ async def delete_documents_by_source(collection_name: str, request: Request):
 @app.delete("/collections/{collection_name}", tags=["Management"])
 async def delete_collection(collection_name: str):
     try:
-        # Apelul nu este asincron, nu trebuie să folosim await
         result = qdrant_client.delete_collection(collection_name=collection_name)
         return {"status": "collection_deleted", "collection": collection_name, "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Eroare la ștergerea folder: {str(e)}")
 
 # Endpoint pentru generarea răspunsurilor folosind Gemini
-
-# Endpoint pentru generarea răspunsurilor folosind Gemini
 @app.post("/collections/{collection_name}/generate", tags=["Generation"])
 async def generate_response(collection_name: str, request: GenerateRequest):
     """
     Endpoint pentru generarea răspunsurilor folosind Gemini pe baza documentelor recuperate.
-    
-    Args:
-        collection_name: Numele folder
-        request: Parametrii pentru generare
-    
-    Returns:
-        Răspunsul generat de Gemini
     """
     try:
         with TimingLogger("Generare răspuns Gemini", collection=collection_name, query=request.query[:50]):
@@ -863,11 +715,10 @@ async def generate_response(collection_name: str, request: GenerateRequest):
                 logger.warning("Interogare goală primită", extra={"collection": collection_name})
                 return {"answer": "Interogarea nu poate fi goală."}
             
-            # Pas 1: Interogăm colecția pentru a obține documentele relevante folosind funcția reutilizabilă
+            # Pas 1: Interogăm colecția pentru a obține documentele relevante
             logger.info(f"Recuperare documente pentru generare folosind funcția reutilizabilă query_documents", 
                        extra={"collection": collection_name, "query": query[:50], "top_k": top_k_docs})
             
-            # Utilizăm direct funcția query_documents în loc să simulăm un apel HTTP intern
             docs_response = await query_documents(collection_name, query, top_k_docs)
             
             # Verificăm dacă am găsit documente

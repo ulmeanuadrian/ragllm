@@ -28,6 +28,17 @@ build/
 # Fișiere specifice IDE
 .idea/
 .vscode/
+
+# Fișiere Qdrant
+storage/qdrant/
+*.qdrant
+qdrant_data/
+backend/qdrant_files/
+
+# PDF-uri și fișiere streamlit
+streamlit.pdf
+*.streamlit.pdf
+streamlit_*.pdf
 *.swp
 *.swo
 
